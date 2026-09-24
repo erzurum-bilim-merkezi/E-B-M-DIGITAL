@@ -1,0 +1,167 @@
+import type { QrIndex } from '../model/catalog.ts'
+import type { KitDocument } from '../model/kit.ts'
+import { toAsciiUpper } from './text.ts'
+
+/** `KC-01` … `KC-99`, then `KC-100` (3 digits, schema allows up to 999). */
+export function formatCardCode(prefix: string, number: number) {
+  return `${prefix}-${String(number).padStart(2, '0')}`
+}
+
+/**
+ * Next card code from the kit's never-decreasing counter, so a code that may already be
+ * printed on equipment is never handed out twice — even if its card was deleted.
+ */
+export function nextQrCode(kit: Pick<KitDocument, 'qrPrefix' | 'qrSequence'>) {
+  const qrSequence = kit.qrSequence + 1
+  return { code: formatCardCode(kit.qrPrefix, qrSequence), qrSequence }
+}
+
+/** "Küçük Çiftçiler" → "KC"; single words use their first letters ("Mıknatıslar" → "MI"). */
+export function suggestQrPrefix(title: string, taken: ReadonlySet<string> = new Set()) {
+  const words = toAsciiUpper(title)
+    .split(/\s+/)
+    .map((word) => word.replace(/[^A-Z]/g, ''))
+    .filter(Boolean)
+  const letters = words.join('')
+
+  const candidates: string[] = []
+  if (words.length >= 2) {
+    candidates.push(
+      words
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join(''),
+    )
+    if (words.length >= 3)
+      candidates.push(
+        words
+          .slice(0, 3)
+          .map((w) => w[0])
+          .join(''),
+      )
+    const [first = '', second = ''] = words
+    candidates.push(
+      `${first.slice(0, 2)}${second[0] ?? ''}`,
+      `${first[0] ?? ''}${second.slice(0, 2)}`,
+    )
+  }
+  if (letters.length >= 2)
+    candidates.push(letters.slice(0, 2), letters.slice(0, 3), letters.slice(0, 4))
+
+  for (const candidate of candidates) {
+    if (/^[A-Z]{2,4}$/.test(candidate) && !taken.has(candidate)) return candidate
+  }
+  const base = (letters.slice(0, 2) || 'KT').padEnd(2, 'X')
+  for (const extra of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    const candidate = `${base}${extra}`
+    if (!taken.has(candidate)) return candidate
+  }
+  for (const a of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    for (const b of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+      const candidate = `${base}${a}${b}`
+      if (!taken.has(candidate)) return candidate
+    }
+  }
+  return base
+}
+
+/** Normalises what a child types or a scanner reads: " kc-4 " → "KC-04". */
+export function normalizeQrCode(input: string) {
+  const compact = input.trim().toUpperCase().replace(/\s+/g, '')
+  const match = /^([A-Z]{2,4})(?:[-_]?(\d{1,3}))?$/.exec(compact)
+  if (!match) return null
+  const [, prefix = '', number] = match
+  if (number === undefined) return prefix
+  const value = Number(number)
+  if (value < 1) return null
+  return formatCardCode(prefix, value)
+}
+
+export type QrResolution =
+  | { kind: 'kit'; code: string; kitSlug: string; kitId: string }
+  | { kind: 'step'; code: string; kitSlug: string; kitId: string; stepSlug: string; stepId: string }
+  | { kind: 'inactive'; code: string; reason: 'removed' | 'archived' }
+  | { kind: 'unknown'; code: string }
+  | { kind: 'invalid' }
+
+/** Resolves a code against the live `qr-index.json` at run time (never baked into the QR). */
+export function resolveQrCode(input: string, index: QrIndex): QrResolution {
+  const code = normalizeQrCode(input)
+  if (!code) return { kind: 'invalid' }
+  const entry = index.codes[code]
+  if (!entry) return { kind: 'unknown', code }
+  if (entry.kitState === 'archived') return { kind: 'inactive', code, reason: 'archived' }
+  if (!entry.active) return { kind: 'inactive', code, reason: 'removed' }
+  if (entry.stepId === null || entry.stepSlug === null) {
+    return { kind: 'kit', code, kitSlug: entry.kitSlug, kitId: entry.kitId }
+  }
+  return {
+    kind: 'step',
+    code,
+    kitSlug: entry.kitSlug,
+    kitId: entry.kitId,
+    stepSlug: entry.stepSlug,
+    stepId: entry.stepId,
+  }
+}
+
+export const EXPLORER_CARD_PREFIX = 'KASIF:'
+
+export type ScannedText =
+  | { kind: 'code'; code: string }
+  | { kind: 'explorer-card'; payload: string }
+  | { kind: 'foreign' }
+  | { kind: 'invalid' }
+
+/**
+ * Interprets text read by the in-app scanner. Accepts our own site's `?q=` links (for every
+ * allowed origin + base path), bare codes typed onto labels and Kâşif card payloads
+ * (`KASIF:…`, not a URL so phone cameras never open it). Anything else is foreign.
+ */
+/** `decodeURIComponent` that never throws (a malformed sticker must not stop the scanner). */
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return ''
+  }
+}
+
+export function parseScannedText(text: string, allowedSiteUrls: readonly string[]): ScannedText {
+  const value = text.trim()
+  if (value.toUpperCase().startsWith(EXPLORER_CARD_PREFIX)) {
+    return { kind: 'explorer-card', payload: value.slice(EXPLORER_CARD_PREFIX.length).trim() }
+  }
+  if (/^https?:\/\//i.test(value)) {
+    let url: URL
+    try {
+      url = new URL(value)
+    } catch {
+      return { kind: 'invalid' }
+    }
+    const ours = allowedSiteUrls.some((site) => {
+      try {
+        const base = new URL(site)
+        return url.origin === base.origin && url.pathname.startsWith(base.pathname)
+      } catch {
+        return false
+      }
+    })
+    if (!ours) return { kind: 'foreign' }
+    const fromQuery = url.searchParams.get('q')
+    const fromPath = /\/q\/([^/?#]+)\/?$/.exec(url.pathname)?.[1]
+    const code = normalizeQrCode(fromQuery ?? (fromPath ? safeDecode(fromPath) : ''))
+    return code ? { kind: 'code', code } : { kind: 'invalid' }
+  }
+  const code = normalizeQrCode(value)
+  return code ? { kind: 'code', code } : { kind: 'invalid' }
+}
+
+/** The URL printed in every QR: the site root + `?q=` (GitHub Pages 404s on deep paths). */
+export function buildQrUrl(siteUrl: string, code: string) {
+  const url = new URL(siteUrl)
+  url.search = ''
+  url.hash = ''
+  url.searchParams.set('q', code)
+  return url.toString()
+}

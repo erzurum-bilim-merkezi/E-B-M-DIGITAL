@@ -1,46 +1,51 @@
-import type { ComponentProps } from 'react'
+import { LoaderCircle } from 'lucide-react'
+import type { ComponentProps, ReactNode } from 'react'
 
-import { cn } from '@/shared/lib/cn'
+import { buttonClasses, type ButtonSize, type ButtonVariant } from './button-classes'
 
-const variants = {
-  primary: 'bg-primary text-primary-fg shadow-xs hover:bg-primary-hover',
-  secondary:
-    'bg-surface text-fg shadow-xs ring-1 ring-border-strong ring-inset hover:bg-surface-muted',
-  ghost: 'text-fg-muted hover:bg-surface-muted hover:text-fg',
-  danger: 'bg-danger text-white shadow-xs hover:bg-danger-hover',
-} as const
-
-const sizes = {
-  sm: 'h-8 px-3 text-sm',
-  md: 'h-10 px-4 text-sm',
-  lg: 'h-12 px-6 text-base',
-} as const
+export type { ButtonSize, ButtonVariant } from './button-classes'
 
 export type ButtonProps = ComponentProps<'button'> & {
-  variant?: keyof typeof variants
-  size?: keyof typeof sizes
+  variant?: ButtonVariant
+  size?: ButtonSize
+  /** Shows a spinner, keeps the width and blocks clicks (`aria-busy`). */
+  loading?: boolean
+  leadingIcon?: ReactNode
 }
 
 export function Button({
   variant = 'primary',
   size = 'md',
   type = 'button',
+  loading = false,
+  leadingIcon,
   className,
+  children,
+  disabled,
   ...props
 }: ButtonProps) {
   return (
     <button
       type={type}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md font-medium whitespace-nowrap select-none',
-        'transition-[background-color,color,box-shadow,translate] duration-150 ease-out-quart active:translate-y-px',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-        'disabled:pointer-events-none disabled:opacity-50',
-        variants[variant],
-        sizes[size],
-        className,
-      )}
+      className={buttonClasses({ variant, size, className })}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
-    />
+    >
+      {loading ? (
+        <>
+          <span className="invisible inline-flex items-center gap-[inherit]">
+            {leadingIcon}
+            {children}
+          </span>
+          <LoaderCircle aria-hidden="true" className="absolute animate-spin" />
+        </>
+      ) : (
+        <>
+          {leadingIcon}
+          {children}
+        </>
+      )}
+    </button>
   )
 }

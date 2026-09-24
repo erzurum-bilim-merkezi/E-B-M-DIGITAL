@@ -3,7 +3,7 @@ import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
 
 import { createQueryClient } from '@/shared/api/query-client'
-import { ErrorFallback } from '@/shared/ui'
+import { ErrorFallback, TooltipProvider } from '@/shared/ui'
 
 // Loaded only in development so it never ships in the production bundle.
 const ReactQueryDevtools = import.meta.env.DEV
@@ -18,9 +18,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <QueryClientProvider client={queryClient}>
-        {children}
+        <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
         <Suspense fallback={null}>
-          <ReactQueryDevtools buttonPosition="bottom-left" />
+          <ReactQueryDevtools buttonPosition="bottom-right" />
         </Suspense>
       </QueryClientProvider>
     </ErrorBoundary>

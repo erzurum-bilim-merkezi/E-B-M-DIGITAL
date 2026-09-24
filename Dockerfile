@@ -12,7 +12,8 @@ FROM deps AS build
 ARG VITE_API_BASE_URL
 ARG VITE_APP_ENV=production
 ARG VITE_APP_NAME="Erzurum Bilim Merkezi"
-ARG VITE_COMING_SOON=false
+# Safe default: the in-browser mock backend is never served as the live app (ADR 0013).
+ARG VITE_COMING_SOON=true
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
     VITE_APP_ENV=$VITE_APP_ENV \
     VITE_APP_NAME=$VITE_APP_NAME \

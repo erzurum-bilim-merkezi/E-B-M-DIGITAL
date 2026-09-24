@@ -1,0 +1,11 @@
+# Production-like local run: docker compose up --build  →  http://localhost:8080
+services:
+  web:
+    build:
+      context: .
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api}
+        VITE_APP_ENV: ${VITE_APP_ENV:-production}
+    ports:
+      - '8080:8080'
+    restart: unless-stopped

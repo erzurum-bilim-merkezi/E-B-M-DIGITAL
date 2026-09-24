@@ -1,0 +1,158 @@
+@import 'tailwindcss';
+/* Self-hosted (KVKK/GDPR: no third-party font CDN). Weight axis only — ~60 kB incl. Turkish glyphs. */
+@import '@fontsource-variable/bricolage-grotesque/wght.css';
+
+/*
+ * Design tokens. Two tiers:
+ *   1. Primitive scales (brand-*, night-*) — raw values, used by token definitions and illustrations.
+ *   2. Semantic tokens (canvas, surface, fg, primary, …) — what UI components use.
+ *      They switch per theme, so components never need `dark:` variants.
+ * Theme: follows the OS by default; `data-theme="light|dark"` forces one — on <html> or any subtree.
+ */
+@theme {
+  --font-sans: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', system-ui, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  --color-brand-50: oklch(0.97 0.02 255);
+  --color-brand-100: oklch(0.93 0.04 255);
+  --color-brand-200: oklch(0.87 0.08 255);
+  --color-brand-300: oklch(0.78 0.12 255);
+  --color-brand-400: oklch(0.68 0.16 255);
+  --color-brand-500: oklch(0.6 0.19 255);
+  --color-brand-600: oklch(0.52 0.2 258);
+  --color-brand-700: oklch(0.45 0.18 260);
+  --color-brand-800: oklch(0.38 0.14 262);
+  --color-brand-900: oklch(0.32 0.1 264);
+  --color-brand-950: oklch(0.22 0.07 266);
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+
+  --animate-twinkle: twinkle 5s ease-in-out infinite;
+  --animate-draw: draw 1.4s var(--ease-in-out-quart) both;
+
+  @keyframes twinkle {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.25;
+    }
+  }
+
+  @keyframes draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+}
+
+/*
+ * "Erzurum night" art palette — brand illustrations and the coming-soon page.
+ * `static` keeps the variables emitted even when only referenced via var() in SVG.
+ */
+@theme static {
+  --color-night-950: #07112a;
+  --color-night-900: #0a1733;
+  --color-night-800: #10224a;
+  --color-night-700: #183262;
+  --color-night-600: #24477f;
+  --color-ice-200: #cfe0fb;
+  --color-snow-50: #f4f7fc;
+  /* Warm "lights are on" accent — reserved for the in-progress signal. */
+  --color-lamp: #ffc56b;
+}
+
+/* Semantic tokens → Tailwind utilities (bg-surface, text-fg-muted, border-border, …). */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+}
+
+@layer base {
+  :root,
+  [data-theme='light'] {
+    color-scheme: light;
+    --canvas: var(--color-white);
+    --surface: var(--color-white);
+    --surface-muted: var(--color-slate-50);
+    --fg: var(--color-slate-900);
+    --fg-muted: var(--color-slate-600);
+    --fg-subtle: var(--color-slate-500);
+    --border: var(--color-slate-200);
+    --border-strong: var(--color-slate-300);
+    --ring: var(--color-brand-600);
+    --link: var(--color-brand-600);
+    --primary: var(--color-brand-600);
+    --primary-hover: var(--color-brand-700);
+    --primary-fg: var(--color-white);
+    --danger: var(--color-red-600);
+    --danger-hover: var(--color-red-700);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      color-scheme: dark;
+      --canvas: var(--color-slate-950);
+      --surface: var(--color-slate-900);
+      --surface-muted: var(--color-slate-800);
+      --fg: var(--color-slate-50);
+      --fg-muted: var(--color-slate-300);
+      --fg-subtle: var(--color-slate-400);
+      --border: var(--color-slate-800);
+      --border-strong: var(--color-slate-600);
+      --ring: var(--color-brand-400);
+      --link: var(--color-brand-300);
+    }
+  }
+
+  [data-theme='dark'] {
+    color-scheme: dark;
+    --canvas: var(--color-slate-950);
+    --surface: var(--color-slate-900);
+    --surface-muted: var(--color-slate-800);
+    --fg: var(--color-slate-50);
+    --fg-muted: var(--color-slate-300);
+    --fg-subtle: var(--color-slate-400);
+    --border: var(--color-slate-800);
+    --border-strong: var(--color-slate-600);
+    --ring: var(--color-brand-400);
+    --link: var(--color-brand-300);
+  }
+
+  body {
+    @apply bg-canvas font-sans text-fg antialiased;
+  }
+
+  /* Honour the OS setting: no ambient motion, state changes become instant. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      transition-delay: 0s !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

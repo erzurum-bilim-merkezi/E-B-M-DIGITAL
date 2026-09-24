@@ -1,0 +1,22 @@
+# Secrets must never enter the build context
+.env
+.env.*
+!.env.example
+
+.git
+node_modules
+dist
+dev-dist
+dist-coming-soon
+coverage
+playwright-report
+test-results
+logs
+*.log
+.claude
+.vscode
+.idea
+.husky
+docs
+Dockerfile
+compose.yaml

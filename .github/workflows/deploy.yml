@@ -1,0 +1,68 @@
+name: Deploy
+
+# Publishes the site to GitHub Pages — only after CI (incl. E2E + accessibility) passed on main.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  HUSKY: 0
+
+jobs:
+  build:
+    name: Build site
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_APP_ENV: production
+          # Repository variables (Settings → Secrets and variables → Actions → Variables).
+          # Launch day: set VITE_COMING_SOON=false and re-run this workflow.
+          VITE_COMING_SOON: ${{ vars.VITE_COMING_SOON || 'true' }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      - name: Prepare artifact
+        run: |
+          # Hidden source maps are for error tracking only — never publish them.
+          find dist -name '*.map' -delete
+          # SPA fallback: GitHub Pages serves 404.html for unknown paths (deep links).
+          cp dist/index.html dist/404.html
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

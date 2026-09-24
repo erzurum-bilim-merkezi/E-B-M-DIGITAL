@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Placeholder mark (not the official logo): snowy ridge + the lit "work in progress" light. -->
+  <clipPath id="tile"><rect width="64" height="64" rx="14" /></clipPath>
+  <g clip-path="url(#tile)">
+    <rect width="64" height="64" fill="#0a1733" />
+    <path d="M-2 64 L-2 48 L18 27 L27 37 L39 21 L66 50 L66 64 Z" fill="#183262" />
+    <path d="M18 27 L24 33.5 L20.5 36 L16.5 32 L12.5 34.5 Z" fill="#f4f7fc" />
+    <path d="M39 21 L47 29.5 L42.5 32 L39 28.5 L34.5 31 Z" fill="#f4f7fc" />
+    <circle cx="48" cy="14" r="4.5" fill="#ffc56b" />
+  </g>
+</svg>

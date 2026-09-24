@@ -1,6 +1,6 @@
 # 0004. UI bileşen stratejisi
 
-- **Durum:** Önerildi — karar bekliyor
+- **Durum:** Kabul edildi (2026-09-24, Kâşif v1)
 - **Tarih:** 2026-09-24
 
 ## Bağlam
@@ -22,7 +22,7 @@ semantik token'larla yazılmaktadır.
 4. **Tam hazır kit (MUI, Ant Design)** — Hızlı başlangıç. Eksi: kendine özgü görünüm, büyük bundle,
    token sistemimizle çatışma; "premium ve özgün" hedefiyle uyumsuz.
 
-## Öneri
+## Karar
 
 Seçenek 1: `src/shared/ui` altında shadcn/ui bileşenlerini semantik token'larımıza uyarlayarak
 kullanmak; karmaşık bileşenler için Radix primitiflerine dayanmak. Tarih/sayı ağırlıklı formlar

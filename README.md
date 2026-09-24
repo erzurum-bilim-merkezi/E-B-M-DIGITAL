@@ -7,6 +7,12 @@ Erzurum Bilim Merkezi'nin dijital platformu. Kurumsal ölçekte geliştirilen bi
 uygulaması (SPA): tip güvenli veri katmanı, zorlanan mimari sınırlar, otomatik kalite kapıları,
 erişilebilirlik testleri ve Claude Code ile yapay zekâ destekli geliştirme ortamı.
 
+İlk ürün **Kâşif**'tir: çocukların bilim merkezindeki deney kitlerinin QR kodlarını okutup etkileşimli
+kartlarla keşfettiği PWA (`/`) ve kitlerin kodsuz tasarlanıp yayınlandığı, QR etiketlerinin basıldığı ve
+etkinliğin izlendiği **Kâşif Studio** (`/studio`). Bugün tarayıcı içi bir deneme arka ucuyla çalışır
+(ADR 0015); Supabase geçişi canlı ortam kapısıyla (F12) yapılacaktır. Teslim raporu ve kullanım
+kılavuzu: [docs/rapor/kasif-rapor.html](docs/rapor/kasif-rapor.html).
+
 **Canlı site:** https://erzurum-bilim-merkezi.github.io/E-B-M-DIGITAL/ — şu an "Çalışmalar devam
 ediyor" modunda.
 
@@ -35,8 +41,12 @@ ediyor" modunda.
 ```bash
 npm ci                          # bağımlılıklar + git hook'ları
 cp .env.example .env.local      # yerel ayarlar (commit edilmez)
-npm run dev                     # http://localhost:5173
+npm run dev                     # http://localhost:5173  (Kâşif: /, Studio: /studio)
 ```
+
+Deneme ortamı ilk açılışta örnek içerik yükler. Studio deneme hesapları giriş ekranında yazar
+(yönetici: `yonetici@kasif.dev` / `Kasif.Studio.2026` + ekrandaki deneme doğrulama kodu; editör:
+`editor@kasif.dev` / `Kasif.Editor.2026`).
 
 ## Komutlar
 
@@ -48,7 +58,7 @@ npm run dev                     # http://localhost:5173
 | `npm run validate`        | **Tam yerel kalite kapısı:** typecheck, lint, sınırlar, format, test |
 | `npm test`                | Birim testler (watch)                                                |
 | `npm run test:coverage`   | Birim testler + coverage raporu (`coverage/`)                        |
-| `npm run test:e2e`        | Playwright E2E + erişilebilirlik (açık ve koyu tema)                 |
+| `npm run test:e2e`        | Playwright E2E + erişilebilirlik (Pages benzeri sunucu, açık/koyu)   |
 | `npm run lint:boundaries` | Katman/feature import kurallarını denetler                           |
 | `npm run format`          | Prettier ile tüm kodu biçimlendirir                                  |
 
@@ -56,17 +66,18 @@ npm run dev                     # http://localhost:5173
 
 ```
 src/
-├── app/        # Uygulama kökü: provider'lar, router, layout'lar, global stiller
-├── pages/      # Route bileşenleri (ince; feature'ları birleştirir)
-├── features/   # Dikey dilimler: api/ components/ hooks/ index.ts
-├── shared/     # Domain'den bağımsız: ui/ api/ config/ lib/
-└── test/       # Test kurulumu, MSW handler'ları, render yardımcıları
-e2e/            # Playwright senaryoları ve erişilebilirlik testleri
+├── app/        # Uygulama kökü: provider'lar, router + korumalar, layout'lar, deneme verisi
+├── pages/      # Route bileşenleri (ince): kids/ (Kâşif), studio/ (Kâşif Studio)
+├── features/   # Dikey dilimler: api/ (port + mock adapter) components/ index.ts
+├── entities/   # Saf alan modelleri (kit, explorer, activity, studio) — yalnızca zod
+├── shared/     # Domain'den bağımsız: ui/ (ui/kid/) api/ config/ lib/ hooks/
+└── test/       # Test kurulumu, render/uygulama/deneme arka ucu yardımcıları
+e2e/            # Playwright: kids/ studio/ journeys/ a11y/ coming-soon/ + support/
 docs/           # Mimari, tasarım sistemi, ADR'ler
 docker/         # nginx yapılandırması ve güvenlik başlıkları
 ```
 
-Bağımlılıklar yalnızca aşağı yönlüdür: `app → pages → features → shared`. Ayrıntılar:
+Bağımlılıklar yalnızca aşağı yönlüdür: `app → pages → features → entities → shared`. Ayrıntılar:
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Referans feature: [src/features/health](src/features/health).
 
 ## Ortam değişkenleri
@@ -113,8 +124,9 @@ docker run -p 8080:8080 ebm-digital            # http://localhost:8080  (sağlı
 ```
 
 İmaj root olmayan nginx ile çalışır; CSP ve güvenlik başlıkları
-[docker/nginx/security-headers.conf](docker/nginx/security-headers.conf) içindedir. Canlıya çıkmadan önce
-`connect-src` değerini gerçek API adresinize göre daraltın.
+[docker/nginx/security-headers.conf](docker/nginx/security-headers.conf) içindedir; dosya
+`src/shared/config/csp.ts`'den üretilir (`CSP_BACKEND_ORIGIN=… npm run csp:nginx`). İmaj varsayılan
+olarak coming-soon modunda derlenir; deneme arka ucu hiçbir zaman canlı uygulama olarak sunulmaz.
 
 ## Claude Code ile geliştirme
 

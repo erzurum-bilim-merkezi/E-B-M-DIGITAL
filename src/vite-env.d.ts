@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_APP_ENV?: 'development' | 'staging' | 'production'
   readonly VITE_API_BASE_URL?: string
   readonly VITE_COMING_SOON?: string
+  readonly VITE_PUBLIC_SITE_URL?: string
 }
 
 interface ImportMeta {

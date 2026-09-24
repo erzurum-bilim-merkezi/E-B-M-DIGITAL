@@ -20,5 +20,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "src/shared/config/env.schema.ts"]
+  "include": ["vite.config.ts", "src/shared/config/env.schema.ts", "src/shared/config/csp.ts"]
 }

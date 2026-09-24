@@ -14,6 +14,22 @@ describe('ComingSoonPage', () => {
     expect(screen.getByRole('contentinfo')).toHaveTextContent(String(new Date().getFullYear()))
   })
 
+  it('shows the code of a printed QR scanned before launch', () => {
+    window.history.pushState({}, '', '/?q=kc-4')
+    render(<ComingSoonPage />)
+
+    expect(screen.getByText(/Okuttuğunuz kod/)).toHaveTextContent('KC-04')
+    window.history.pushState({}, '', '/')
+  })
+
+  it('ignores a query that is not a Kâşif code', () => {
+    window.history.pushState({}, '', '/?q=%3Cscript%3E')
+    render(<ComingSoonPage />)
+
+    expect(screen.queryByText(/Okuttuğunuz kod/)).not.toBeInTheDocument()
+    window.history.pushState({}, '', '/')
+  })
+
   it('sets the document title', () => {
     render(<ComingSoonPage />)
 

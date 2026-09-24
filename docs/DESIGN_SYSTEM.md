@@ -58,22 +58,23 @@ Tanımlar: [src/app/styles/global.css](../src/app/styles/global.css). Tema işle
 
 ## 3. Semantik token'lar
 
-| Token           | Kullanım                          | Açık tema | Koyu tema |
-| --------------- | --------------------------------- | --------- | --------- |
-| `canvas`        | Sayfa zemini                      | white     | slate-950 |
-| `surface`       | Kart, panel, popover              | white     | slate-900 |
-| `surface-muted` | Hover, seçili satır, hafif dolgu  | slate-50  | slate-800 |
-| `fg`            | Birincil metin                    | slate-900 | slate-50  |
-| `fg-muted`      | İkincil metin                     | slate-600 | slate-300 |
-| `fg-subtle`     | Üçüncül metin, meta               | slate-500 | slate-400 |
-| `border`        | Ayraçlar, kart kenarları          | slate-200 | slate-800 |
-| `border-strong` | Form kontrolü kenarları           | slate-300 | slate-600 |
-| `ring`          | Klavye odak halkası               | brand-600 | brand-400 |
-| `link`          | Bağlantılar                       | brand-600 | brand-300 |
-| `primary`       | Birincil aksiyon zemini           | brand-600 | brand-600 |
-| `primary-hover` | Birincil aksiyon hover            | brand-700 | brand-700 |
-| `primary-fg`    | Birincil aksiyon üzerindeki metin | white     | white     |
-| `danger`        | Yıkıcı aksiyon / hata             | red-600   | red-600   |
+| Token            | Kullanım                                                       | Açık tema  | Koyu tema  |
+| ---------------- | -------------------------------------------------------------- | ---------- | ---------- |
+| `canvas`         | Sayfa zemini                                                   | white      | slate-950  |
+| `surface`        | Kart, panel, popover                                           | white      | slate-900  |
+| `surface-muted`  | Hover, seçili satır, hafif dolgu                               | slate-50   | slate-800  |
+| `fg`             | Birincil metin                                                 | slate-900  | slate-50   |
+| `fg-muted`       | İkincil metin                                                  | slate-600  | slate-300  |
+| `fg-subtle`      | Üçüncül metin, meta                                            | slate-500  | slate-400  |
+| `border`         | Ayraçlar, kart kenarları                                       | slate-200  | slate-800  |
+| `border-strong`  | Belirgin ayraç, kesik çerçeve                                  | slate-300  | slate-600  |
+| `control-border` | Girdi, seçim, onay kutusu, anahtar kenarı (≥ 3:1, WCAG 1.4.11) | oklch 0.62 | oklch 0.56 |
+| `ring`           | Klavye odak halkası                                            | brand-600  | brand-400  |
+| `link`           | Bağlantılar                                                    | brand-600  | brand-300  |
+| `primary`        | Birincil aksiyon zemini                                        | brand-600  | brand-600  |
+| `primary-hover`  | Birincil aksiyon hover                                         | brand-700  | brand-700  |
+| `primary-fg`     | Birincil aksiyon üzerindeki metin                              | white      | white      |
+| `danger`         | Yıkıcı aksiyon / hata                                          | red-600    | red-600    |
 
 Tüm metin/zemin çiftleri WCAG AA kontrastını karşılar ve her iki temada axe ile test edilir.
 

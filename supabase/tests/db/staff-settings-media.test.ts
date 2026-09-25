@@ -47,7 +47,12 @@ describe('Studio accounts', () => {
   it('lists accounts for admins only', async () => {
     const admin = await db().createStaff({ role: 'admin' })
     const editor = await db().createStaff({ role: 'editor' })
-    await db().sql(`insert into auth.mfa_factors (user_id) values ($1)`, [admin.id])
+    // Every column the real auth.mfa_factors requires (CI runs this on the local stack).
+    await db().sql(
+      `insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
+       values (gen_random_uuid(), $1, 'Kâşif Studio', 'totp', 'verified', now(), now())`,
+      [admin.id],
+    )
     const list = await db().as(admin).rpc<(Staff & { totpEnrolled: boolean })[]>('staff_list')
     expect(list.map((user) => [user.id, user.totpEnrolled])).toEqual([
       [admin.id, true],

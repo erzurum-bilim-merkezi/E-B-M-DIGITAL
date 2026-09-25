@@ -119,22 +119,38 @@ function AiSettings({ settings, editable }: { settings: AppSettings; editable: b
               <option value="3">3 öneri</option>
             </Select>
           </Field>
-          {isMockBackend && editable && (
-            <Field
-              label="Sağlayıcı (deneme ortamı)"
-              description="Canlıda sunucu secret’ı AI_PROVIDER belirler. “Kapalı” iken tüm yapay zekâ girişleri gizlenir."
-            >
-              <Select
-                value={settings.aiProvider}
-                onChange={(event) =>
-                  update.mutate({ aiProvider: event.target.value === 'off' ? 'off' : 'fake' })
-                }
+          {editable &&
+            (isMockBackend ? (
+              <Field
+                label="Sağlayıcı (deneme ortamı)"
+                description="Canlıda sunucu secret’ı AI_PROVIDER belirler. “Kapalı” iken tüm yapay zekâ girişleri gizlenir."
               >
-                <option value="fake">Deneme sağlayıcısı (fake)</option>
-                <option value="off">Kapalı (off)</option>
-              </Select>
-            </Field>
-          )}
+                <Select
+                  value={settings.aiProvider}
+                  onChange={(event) =>
+                    update.mutate({ aiProvider: event.target.value === 'off' ? 'off' : 'fake' })
+                  }
+                >
+                  <option value="fake">Deneme sağlayıcısı (fake)</option>
+                  <option value="off">Kapalı (off)</option>
+                </Select>
+              </Field>
+            ) : (
+              <Field
+                label="Yapay zekâ"
+                description="“Kapalı” iken tüm yapay zekâ girişleri gizlenir. Açıkken Gemini, sunucudaki GEMINI_API_KEY ile çalışır."
+              >
+                <Select
+                  value={settings.aiProvider === 'off' ? 'off' : 'gemini'}
+                  onChange={(event) =>
+                    update.mutate({ aiProvider: event.target.value === 'off' ? 'off' : 'gemini' })
+                  }
+                >
+                  <option value="gemini">Açık (Gemini)</option>
+                  <option value="off">Kapalı</option>
+                </Select>
+              </Field>
+            ))}
           {editable && (
             <Button type="submit" className="self-start" loading={update.isPending}>
               Kaydet

@@ -6,11 +6,18 @@
     "types": ["node", "vitest/globals"],
     "skipLibCheck": true,
 
-    "module": "nodenext",
+    /* Bundler mode, like Vitest: suites also import app modules through the `@` alias. */
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
+
+    /* Path aliases (vitest.db.config.ts) */
+    "paths": {
+      "@/*": ["./src/*"]
+    },
 
     /* Strictness */
     "strict": true,

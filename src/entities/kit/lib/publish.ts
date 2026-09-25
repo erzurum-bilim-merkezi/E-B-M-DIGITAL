@@ -5,8 +5,12 @@ import type { KitVersion, QrCodeRow, StudioKit } from '../model/studio.ts'
 /** Bumped when a new snapshot format needs a newer app (ADR 0019). */
 export const MIN_APP_VERSION = 1
 
-export function latestVersionOf(kitId: string, versions: readonly KitVersion[]) {
-  let latest: KitVersion | undefined
+/** The newest finalized version of a kit (any row shape that carries the version fields). */
+export function latestVersionOf<T extends Pick<KitVersion, 'kitId' | 'version' | 'finalizedAt'>>(
+  kitId: string,
+  versions: readonly T[],
+) {
+  let latest: T | undefined
   for (const version of versions) {
     if (version.kitId !== kitId || version.finalizedAt === null) continue
     if (!latest || version.version > latest.version) latest = version

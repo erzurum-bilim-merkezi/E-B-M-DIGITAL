@@ -3,8 +3,9 @@
 
 do $$
 begin
+  -- Where the Supabase dashboard puts it too (PGlite in the unit tests has no pg_cron: stubbed).
   if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
-    create extension if not exists pg_cron;
+    create extension if not exists pg_cron with schema pg_catalog;
   end if;
 end;
 $$;

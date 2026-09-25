@@ -23,11 +23,13 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "validate": "run-s typecheck lint lint:boundaries format:check test:run test:db",
+    "validate": "run-s typecheck lint lint:boundaries format:check sync:edge:check test:run test:db",
     "prepare": "husky",
     "csp:nginx": "node scripts/generate-nginx-headers.mjs",
     "build:e2e": "vite build --mode e2e",
-    "test:db": "vitest run --config vitest.db.config.ts"
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "sync:edge": "node scripts/sync-edge-entities.mjs",
+    "sync:edge:check": "node scripts/sync-edge-entities.mjs --check"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [

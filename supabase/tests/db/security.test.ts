@@ -91,6 +91,7 @@ describe('security model', () => {
     const admin = await db().createStaff({ role: 'admin' })
     const adminWithoutTotp = await db().createStaff({ role: 'admin', aal: 'aal1' })
     const inactive = await db().createStaff({ role: 'editor', active: false })
+    const temporaryPassword = await db().createStaff({ role: 'editor', mustChangePassword: true })
     const device = await db().createDevice()
     await db().insertKit({ slug: 'deneme', qrPrefix: 'DN' })
 
@@ -101,6 +102,8 @@ describe('security model', () => {
     expect(await visible(admin)).toBe(1)
     expect(await visible(adminWithoutTotp)).toBe(0)
     expect(await visible(inactive)).toBe(0)
+    // A temporary password must be changed before anything else.
+    expect(await visible(temporaryPassword)).toBe(0)
     expect(await visible(device)).toBe(0)
   })
 

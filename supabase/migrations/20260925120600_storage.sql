@@ -28,6 +28,15 @@ create policy kasif_media_upload on storage.objects for insert to authenticated
 create policy kasif_media_delete on storage.objects for delete to authenticated
   using (bucket_id = 'media' and name like 'uploads/%' and private.is_admin());
 
+-- An upload whose registration failed may be removed by the staff member who made it (it has no
+-- media_assets row yet, so nothing can use it).
+create policy kasif_media_delete_own_orphan on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'media' and name like 'uploads/%' and owner = auth.uid()
+    and private.is_active_staff()
+    and not exists (select 1 from public.media_assets m where m.path = name)
+  );
+
 create policy kasif_published_insert on storage.objects for insert to authenticated
   with check (bucket_id = 'published' and private.is_admin());
 

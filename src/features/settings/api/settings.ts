@@ -18,7 +18,10 @@ import { requireStaff } from '@/shared/api/mock-auth'
 import { mockDoc, mockGate, mockTable } from '@/shared/api/mock-db'
 import { MOCK_DOCS, MOCK_TABLES } from '@/shared/api/mock-tables'
 import { STUDIO_QUERY_ROOT } from '@/shared/api/query-keys'
+import { isSupabaseBackend } from '@/shared/config/backend'
 import { istanbulDayKey, lastDayKeys } from '@/shared/lib/format'
+
+import { createSupabaseSettingsService } from './settings.supabase'
 
 /** What Studio sees of a centre device — never the PIN or setup-code hashes. */
 export type CenterDeviceSummary = Omit<CenterDevice, 'pinHash' | 'setupCodeHash'>
@@ -156,7 +159,9 @@ function createMockSettingsService(): SettingsService {
   }
 }
 
-export const settingsService: SettingsService = createMockSettingsService()
+export const settingsService: SettingsService = isSupabaseBackend
+  ? createSupabaseSettingsService()
+  : createMockSettingsService()
 
 export const settingsKeys = {
   all: [STUDIO_QUERY_ROOT, 'settings'] as const,

@@ -276,12 +276,13 @@ describe('media library', () => {
   })
 })
 
-describe('storage policies', () => {
-  const insertObject = (actor: Actor, bucket: string, name: string) =>
-    db()
-      .as(actor)
-      .sql(`insert into storage.objects (bucket_id, name) values ($1, $2)`, [bucket, name])
+function insertObject(actor: Actor, bucket: string, name: string) {
+  return db()
+    .as(actor)
+    .sql(`insert into storage.objects (bucket_id, name) values ($1, $2)`, [bucket, name])
+}
 
+describe('storage policies', () => {
   it('lets staff upload to uploads/ only, and admins publish', async () => {
     const editor = await db().createStaff({ role: 'editor' })
     const admin = await db().createStaff({ role: 'admin' })
@@ -301,6 +302,19 @@ describe('storage policies', () => {
     expect(await db().as({ kind: 'anon' }).sql('select name from storage.objects')).toEqual([])
     const device = await db().createDevice()
     expect(await db().as(device).sql('select name from storage.objects')).toEqual([])
+  })
+
+  it('lets the uploader remove an upload that was never registered', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const other = await db().createStaff({ role: 'editor' })
+    await db().sql(
+      `insert into storage.objects (bucket_id, name, owner) values ('media', 'uploads/o.png', $1)`,
+      [editor.id],
+    )
+    const removed = (actor: Actor) =>
+      db().as(actor).sql(`delete from storage.objects where name = 'uploads/o.png' returning name`)
+    expect(await removed(other)).toEqual([])
+    expect(await removed(editor)).toEqual([{ name: 'uploads/o.png' }])
   })
 
   it('lets only admins delete media files', async () => {

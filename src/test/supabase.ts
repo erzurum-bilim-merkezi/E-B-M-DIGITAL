@@ -51,6 +51,18 @@ export function table(name: string, rows: unknown[]) {
   server.use(
     http.get(`${SUPABASE_URL}/rest/v1/${name}`, ({ request }) => {
       queries.push(new URL(request.url).searchParams)
+      // .single() asks PostgREST for one object (406 + PGRST116 when there is none).
+      if (request.headers.get('accept')?.includes('vnd.pgrst.object')) {
+        return rows.length === 1
+          ? jsonBody(rows[0])
+          : HttpResponse.json(
+              {
+                code: 'PGRST116',
+                message: 'JSON object requested, multiple (or no) rows returned',
+              },
+              { status: 406 },
+            )
+      }
       return jsonBody(rows)
     }),
   )
@@ -79,7 +91,7 @@ export function fakeJwt(claims: Record<string, unknown>) {
     exp: Math.floor(Date.now() / 1000) + 3600,
     role: 'authenticated',
     ...claims,
-  })}.signature`
+  })}.c2lnbmF0dXJl`
 }
 
 function storedSession(userId: string, claims: Record<string, unknown>) {

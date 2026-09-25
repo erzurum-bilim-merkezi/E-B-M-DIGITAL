@@ -86,7 +86,9 @@ as $$
   select coalesce(auth.jwt() ->> 'aal', '') = 'aal2'
 $$;
 
--- Role of the calling Studio user, or null (devices, inactive staff, anon).
+-- Role of the calling Studio user, or null (devices, inactive staff, anon). A temporary password
+-- must be changed first: until then the session can do nothing else (my_staff_profile,
+-- verify_current_password and complete_password_change check the profile themselves).
 create function private.staff_role()
 returns public.app_role
 language sql
@@ -96,7 +98,8 @@ set search_path = ''
 as $$
   select p.role
   from public.profiles p
-  where p.id = auth.uid() and p.active and not private.is_anonymous()
+  where p.id = auth.uid() and p.active and not p.must_change_password
+    and not private.is_anonymous()
 $$;
 
 -- Active staff whose session is complete: admins only after the second factor (aal2).

@@ -144,6 +144,20 @@ begin
 end;
 $$;
 
+-- admin-users checks the caller with this before touching the auth admin API.
+create function public.staff_assert_admin()
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_staff(true);
+  return true;
+end;
+$$;
+
 -- Called by admin-users after auth.admin.createUser (temporary password, 72 h).
 create function public.staff_register(
   p_user uuid,
@@ -593,6 +607,7 @@ $$;
 grant execute on function
   public.my_staff_profile(),
   public.staff_list(),
+  public.staff_assert_admin(),
   public.verify_current_password(text),
   public.complete_password_change(),
   public.staff_register(uuid, text, text, public.app_role),

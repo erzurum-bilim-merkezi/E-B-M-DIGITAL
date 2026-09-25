@@ -131,7 +131,7 @@ $$;
 create function private.validate_identity(p_slug text, p_prefix text, p_except uuid default null)
 returns void
 language plpgsql
-volatile -- raises through private.raise
+stable
 security definer
 set search_path = ''
 as $$
@@ -156,7 +156,7 @@ $$;
 create function private.assert_draft(p_draft jsonb, p_id uuid, p_slug text, p_prefix text)
 returns jsonb
 language plpgsql
-volatile -- raises through private.raise
+stable
 set search_path = ''
 as $$
 begin
@@ -214,6 +214,7 @@ begin
   return private.kit_json(v_kit);
 exception when unique_violation then
   perform private.raise('conflict', 'Bu adres ya da QR öneki başka bir kitte kullanılıyor.');
+  return null; -- not reached: private.raise always raises
 end;
 $$;
 
@@ -332,7 +333,7 @@ create function public.kit_identity_taken(
 )
 returns jsonb
 language plpgsql
-volatile -- checks the caller through private.require_staff
+stable
 security definer
 set search_path = ''
 as $$

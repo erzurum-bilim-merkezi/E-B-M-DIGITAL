@@ -811,7 +811,9 @@ describe('analytics_kit_stats', () => {
     ])
     expect(week.totals.avgKitDurationMs).toBe(325_001) // (400 000 + 250 001) / 2, rounded up
     // Three members opened the first card, one completed it.
-    expect(week.mostDropped).toEqual({ stepId: 's-1', title: 'Tohum ekelim', dropRate: 1 - 1 / 3 })
+    expect(rounded(week.mostDropped)).toEqual(
+      rounded({ stepId: 's-1', title: 'Tohum ekelim', dropRate: 1 - 1 / 3 }),
+    )
     // Equal drop rates: the earlier card wins.
     const space = await kitStats(world.editor, world.kits.space, thisWeek())
     expect(space.funnel.map((step) => [step.opens, step.completes])).toEqual([

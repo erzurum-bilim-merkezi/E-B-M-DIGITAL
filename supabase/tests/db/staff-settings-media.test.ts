@@ -92,6 +92,25 @@ describe('Studio accounts', () => {
     expect(right.error?.code).toBe('rate_limited')
   })
 
+  it('never lets a session reset the current-password lock between guesses', async () => {
+    const editor = await db().createStaff({ role: 'editor', mustChangePassword: false })
+    await setPassword(editor, 'Dogru.Parola.1')
+    for (let attempt = 1; attempt < 5; attempt++) {
+      await db()
+        .as(editor)
+        .rpc<Result>('verify_current_password', { p_password: `yanlis-${attempt}` })
+    }
+    const auditBefore = await db().sql('select count(*)::int as n from public.audit_log')
+
+    // Nothing to complete: no side effects, the four failures still count.
+    await db().as(editor).rpc<Staff>('complete_password_change')
+    const fifth = await db()
+      .as(editor)
+      .rpc<Result>('verify_current_password', { p_password: 'yanlis-5' })
+    expect(fifth.error?.code).toBe('rate_limited')
+    expect(await db().sql('select count(*)::int as n from public.audit_log')).toEqual(auditBefore)
+  })
+
   describe('temporary passwords (enforced by the server, not the browser)', () => {
     it('keeps the flag until the password really changed', async () => {
       const editor = await withTemporaryPassword()

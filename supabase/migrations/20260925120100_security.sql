@@ -29,6 +29,7 @@ alter default privileges in schema private revoke execute on functions from anon
 create function private.raise(p_code text, p_message text, p_details jsonb default null)
 returns void
 language plpgsql
+stable -- no side effects, only the exception (never immutable: that could fold it at plan time)
 set search_path = ''
 as $$
 declare
@@ -132,6 +133,7 @@ $$;
 create function private.require_staff(p_admin boolean default false)
 returns uuid
 language plpgsql
+stable -- reads the session only
 security definer
 set search_path = ''
 as $$

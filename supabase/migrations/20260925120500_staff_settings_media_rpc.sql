@@ -85,6 +85,8 @@ begin
     or not exists (select 1 from public.profiles p where p.id = v_user and p.active) then
     return private.error('unauthorized', 'Oturumunuz sona erdi. Lütfen yeniden giriş yapın.');
   end if;
+  -- One guess at a time per user: parallel guesses cannot race the failure counter.
+  perform private.lock_attempts('current-password', v_user::text);
   if private.attempt_locked('current-password', v_user::text) then
     return private.error('rate_limited', v_locked);
   end if;
@@ -120,16 +122,19 @@ begin
   if v_profile.id is null then
     perform private.raise('unauthorized', 'Oturumunuz sona erdi. Lütfen yeniden giriş yapın.');
   end if;
-  if v_profile.must_change_password then
-    -- The server, not the browser, decides that a temporary password was really replaced.
-    if v_profile.temp_password_expires_at is null or v_profile.temp_password_expires_at <= now() then
-      perform private.raise('unauthorized',
-        'Geçici parolanın süresi doldu. Yöneticiden yeni parola isteyin.');
-    end if;
-    select u.encrypted_password into v_hash from auth.users u where u.id = v_user;
-    if v_hash is null or v_hash is not distinct from v_profile.temp_password_hash then
-      perform private.raise('validation', 'Önce yeni bir parola belirleyin.');
-    end if;
+  -- Nothing to complete (a voluntary change, audited by the auth.users trigger): no side
+  -- effects, or any session could reset the current-password lock and guess forever.
+  if not v_profile.must_change_password then
+    return private.staff_json(v_user);
+  end if;
+  -- The server, not the browser, decides that a temporary password was really replaced.
+  if v_profile.temp_password_expires_at is null or v_profile.temp_password_expires_at <= now() then
+    perform private.raise('unauthorized',
+      'Geçici parolanın süresi doldu. Yöneticiden yeni parola isteyin.');
+  end if;
+  select u.encrypted_password into v_hash from auth.users u where u.id = v_user;
+  if v_hash is null or v_hash is not distinct from v_profile.temp_password_hash then
+    perform private.raise('validation', 'Önce yeni bir parola belirleyin.');
   end if;
   update public.profiles p set
     must_change_password = false,
@@ -190,7 +195,7 @@ $$;
 create function public.staff_assert_admin()
 returns boolean
 language plpgsql
-volatile -- checks the caller through private.require_staff
+stable
 security definer
 set search_path = ''
 as $$
@@ -266,6 +271,7 @@ begin
   return private.staff_json(p_user);
 exception when unique_violation then
   perform private.raise('conflict', 'Bu e-posta ile bir kullanıcı zaten var.');
+  return null; -- not reached: private.raise always raises
 end;
 $$;
 
@@ -657,7 +663,7 @@ $$;
 create function public.storage_quota()
 returns jsonb
 language plpgsql
-stable
+volatile -- pg_database_size() is volatile
 security definer
 set search_path = ''
 as $$

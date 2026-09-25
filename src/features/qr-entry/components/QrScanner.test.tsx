@@ -45,6 +45,7 @@ function stubVideoAndDetector(rawValue: string) {
 
 afterEach(() => {
   Reflect.deleteProperty(navigator, 'mediaDevices')
+  Reflect.deleteProperty(navigator, 'permissions')
 })
 
 describe('QrScanner', () => {
@@ -73,6 +74,35 @@ describe('QrScanner', () => {
       expect.objectContaining({ video: { facingMode: { ideal: 'environment' } } }),
     )
     expect(screen.getByRole('button', { name: 'Tekrar dene' })).toBeInTheDocument()
+  })
+
+  it('explains how to unblock the camera and starts it once settings allow it', async () => {
+    const { stream } = createFakeStream()
+    stubVideoAndDetector('KC-01')
+    let allowed = false
+    const getUserMedia = stubCamera(async () => {
+      if (!allowed) throw new DOMException('Permission denied', 'NotAllowedError')
+      return stream
+    })
+    // The browser remembers the block; the permission flips to "granted" in site settings.
+    const permission = Object.assign(new EventTarget(), { state: 'denied' })
+    Object.defineProperty(navigator, 'permissions', {
+      configurable: true,
+      value: { query: vi.fn<() => Promise<typeof permission>>(async () => permission) },
+    })
+    const { user } = renderWithProviders(<QrScanner onDetected={vi.fn<(text: string) => void>()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Kamerayı aç' }))
+    await screen.findByRole('alert')
+    await user.click(screen.getByText('Kamera izni nasıl açılır?'))
+    expect(screen.getByRole('list')).toHaveTextContent('Tarayıcıda:')
+
+    allowed = true
+    permission.state = 'granted'
+    permission.dispatchEvent(new Event('change'))
+
+    expect(await screen.findByText('QR kodu çerçevenin içine getir.')).toBeInTheDocument()
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
   })
 
   it('says there is no camera on devices without a camera API', async () => {

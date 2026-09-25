@@ -20,6 +20,41 @@ export function cameraProblemFrom(error: unknown): CameraProblem {
   return 'failed'
 }
 
+/**
+ * Once the camera is blocked, browsers answer `getUserMedia` without asking again, and no page can
+ * reopen the prompt. Calls `onGranted` when the permission turns `granted` — in site or app
+ * settings, noticed via the permission's `change` event or when the page becomes visible again.
+ * Browsers that cannot query the camera permission never call back. Returns a cleanup.
+ */
+export function watchCameraPermission(onGranted: () => void) {
+  const permissions: Permissions | undefined = navigator.permissions
+  if (typeof permissions?.query !== 'function') return () => {}
+  let stopped = false
+  let status: PermissionStatus | null = null
+
+  const check = () => {
+    if (!stopped && status?.state === 'granted') onGranted()
+  }
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') check()
+  }
+
+  permissions.query({ name: 'camera' }).then(
+    (result) => {
+      if (stopped) return
+      status = result
+      result.addEventListener('change', check)
+    },
+    () => {},
+  )
+  document.addEventListener('visibilitychange', onVisible)
+  return () => {
+    stopped = true
+    status?.removeEventListener('change', check)
+    document.removeEventListener('visibilitychange', onVisible)
+  }
+}
+
 export function stopStream(stream: MediaStream | null) {
   if (!stream) return
   for (const track of stream.getTracks()) track.stop()

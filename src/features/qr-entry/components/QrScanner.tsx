@@ -4,7 +4,7 @@ import { cn } from '@/shared/lib/cn'
 import { KidButton, Mascot } from '@/shared/ui/kid'
 
 import { useQrCamera } from '../hooks/useQrCamera'
-import { hasCameraSupport, type CameraProblem } from '../lib/camera'
+import { hasCameraSupport, watchCameraPermission, type CameraProblem } from '../lib/camera'
 
 export type QrScannerProps = {
   /** Raw text of every newly seen QR code; the same value is ignored while it stays in view. */
@@ -27,7 +27,7 @@ const PROBLEMS: Record<
   denied: {
     icon: '🙈',
     message: 'Kamera izni verilmedi. Kodu elle yazabilirsin.',
-    hint: 'Kamerayı kullanmak istersen tarayıcı ayarlarından izin ver ve tekrar dene.',
+    hint: 'Tarayıcı bu kararı hatırlıyor, izin sorusu bir daha çıkmaz. Bir büyüğünden kamerayı ayarlardan açmasını iste; açılınca kamera kendiliğinden başlar.',
     canRetry: true,
   },
   'not-found': {
@@ -79,6 +79,39 @@ function Intro({ onOpen, focusOnMount }: { onOpen: () => void; focusOnMount: boo
   )
 }
 
+/** Where to switch the camera back on, for the adult helping (the prompt never reappears). */
+const PERMISSION_STEPS = [
+  {
+    where: 'Tarayıcıda',
+    how: 'Adres çubuğundaki kilit ya da ayar simgesi → İzinler → Kamera → İzin ver',
+  },
+  {
+    where: 'Yüklü uygulamada',
+    how: 'Kâşif simgesine basılı tut → Uygulama bilgisi → İzinler (ya da Site ayarları) → Kamera → İzin ver',
+  },
+  {
+    where: 'Hâlâ olmuyorsa',
+    how: 'Cihaz Ayarları → Uygulamalar → tarayıcı (Chrome ya da Safari) → İzinler → Kamera → İzin ver',
+  },
+] as const
+
+function PermissionSteps() {
+  return (
+    <details className="w-full max-w-sm rounded-kid bg-kid-surface-2 px-4 py-3 text-left">
+      <summary className="cursor-pointer text-base font-semibold text-kid-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-kid-sun">
+        Kamera izni nasıl açılır?
+      </summary>
+      <ol className="mt-3 flex list-decimal flex-col gap-2 pl-5 text-base text-kid-fg-soft">
+        {PERMISSION_STEPS.map(({ where, how }) => (
+          <li key={where}>
+            <span className="font-semibold text-kid-fg">{where}:</span> {how}
+          </li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
 function ProblemNotice({ problem, onRetry }: { problem: CameraProblem; onRetry?: () => void }) {
   const { icon, message, hint, canRetry } = PROBLEMS[problem]
   return (
@@ -90,6 +123,7 @@ function ProblemNotice({ problem, onRetry }: { problem: CameraProblem; onRetry?:
         {message}
       </p>
       <p className="max-w-sm text-base text-balance text-kid-fg-soft">{hint}</p>
+      {problem === 'denied' && <PermissionSteps />}
       {canRetry && onRetry && (
         <KidButton variant="surface" onClick={onRetry}>
           Tekrar dene
@@ -138,6 +172,12 @@ function CameraSession({
   const { videoRef, status, torch, toggleTorch } = useQrCamera(onDetected)
   const problem = status === 'starting' || status === 'scanning' ? null : status
   const scanning = status === 'scanning'
+
+  // A blocked camera cannot be asked for again: start as soon as it is allowed in settings.
+  useEffect(
+    () => (problem === 'denied' ? watchCameraPermission(onRetry) : undefined),
+    [problem, onRetry],
+  )
 
   if (problem) {
     return (
@@ -217,6 +257,7 @@ export function QrScanner({ onDetected, paused = false, className }: QrScannerPr
     onDetectedRef.current(value)
   }, [])
 
+  const retry = useCallback(() => setAttempt((count) => count + 1), [])
   const open = () => setView(hasCameraSupport() ? 'camera' : 'no-camera')
   const close = () => {
     setView('intro')
@@ -238,12 +279,7 @@ export function QrScanner({ onDetected, paused = false, className }: QrScannerPr
             <output className="text-lg font-semibold text-kid-fg-soft">Kamera bekliyor…</output>
           </FocusableView>
         ) : (
-          <CameraSession
-            key={attempt}
-            onDetected={report}
-            onRetry={() => setAttempt((count) => count + 1)}
-            onClose={close}
-          />
+          <CameraSession key={attempt} onDetected={report} onRetry={retry} onClose={close} />
         ))}
     </div>
   )

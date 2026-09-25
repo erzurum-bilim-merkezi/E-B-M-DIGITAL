@@ -1,0 +1,33 @@
+name: Reset an admin's 2FA (live, emergency)
+
+# Runbook: a Studio user lost the phone with the authenticator. Removes their TOTP factors so the
+# next sign-in enrols a new one. Approved like every live change (environment `production`).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'E-mail of the Studio account'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Remove the authenticators
+        run: node scripts/admin-mfa-reset.mjs
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          ACCOUNT_EMAIL: ${{ inputs.email }}

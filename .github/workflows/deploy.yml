@@ -41,6 +41,20 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: The live database is on this schema (ADR 0019 — migrations before the frontend)
+        if: vars.VITE_BACKEND == 'supabase'
+        env:
+          URL: ${{ vars.VITE_SUPABASE_URL }}
+          KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          expected="$(ls supabase/migrations/*.sql | sort | tail -1 | xargs basename | cut -d_ -f1)"
+          live="$(curl -fsS -X POST "$URL/rest/v1/rpc/schema_version" -H "apikey: $KEY" \
+            -H 'Content-Type: application/json' -d '{}' | tr -d '"')"
+          echo "repository: $expected · live: $live"
+          if [ "$live" != "$expected" ]; then
+            echo "::error::The live database is on $live, this commit needs $expected. Run the db-migrate workflow first."
+            exit 1
+          fi
       - name: Build
         run: npm run build
         env:

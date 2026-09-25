@@ -1,0 +1,79 @@
+name: DB migrate (live)
+
+# ADR 0016 "Uygula · 1 kez": the only way migrations reach the live database. Manual, approved
+# (environment `production`), after the CI rehearsal on a local stack passed for this commit.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type the Supabase project ref to confirm (Project Settings → General)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Backup · dry run · push · verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      # Session pooler (IPv4, port 5432): GitHub runners have no IPv6 for the direct address.
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      AGE_PUBLIC_KEY: ${{ secrets.BACKUP_AGE_PUBLIC_KEY }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+      - name: Confirmation matches the project
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ] || [ -z "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::Secrets SUPABASE_DB_URL and SUPABASE_PROJECT_REF of the production environment are missing."
+            exit 1
+          fi
+          if [ "$CONFIRM" != "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::The confirmation does not match the project ref."
+            exit 1
+          fi
+      - name: Encrypted backup before any change
+        run: |
+          sudo apt-get install -y age > /dev/null
+          mkdir -p backup
+          supabase db dump --db-url "$SUPABASE_DB_URL" --role-only -f backup/roles.sql
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/schema.sql
+          supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy -f backup/data.sql
+          tar czf backup.tar.gz backup
+          if [ -n "$AGE_PUBLIC_KEY" ]; then
+            age -r "$AGE_PUBLIC_KEY" -o "backup-${GITHUB_RUN_ID}.tar.gz.age" backup.tar.gz
+          else
+            echo "::error::Secret BACKUP_AGE_PUBLIC_KEY is missing: the backup cannot be encrypted."
+            exit 1
+          fi
+          rm -rf backup backup.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup-*.tar.gz.age
+          retention-days: 7
+      - name: Pending migrations (dry run)
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
+      - name: Apply
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
+      - name: Live schema equals the repository
+        run: |
+          expected="$(ls supabase/migrations/*.sql | sort | tail -1 | xargs basename | cut -d_ -f1)"
+          live="$(psql "$SUPABASE_DB_URL" -At -c 'select public.schema_version()')"
+          echo "repository: $expected · live: $live"
+          if [ "$live" != "$expected" ]; then
+            echo "::error::schema_version() is $live, the newest migration is $expected."
+            exit 1
+          fi

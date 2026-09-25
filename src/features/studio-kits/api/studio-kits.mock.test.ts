@@ -222,6 +222,19 @@ describe('kitRepository', () => {
       expect(page.items.map((kit) => kit.slug)).toEqual([slug])
     })
 
+    it.each(['BIO', 'bio'])(
+      'finds a QR prefix with an “I” whatever the case (%s)',
+      async (query) => {
+        await kitRepository.create(
+          templateInput({ title: 'Bitki Organları', slug: 'bitki-organlari', qrPrefix: 'BIO' }),
+        )
+
+        const page = await kitRepository.list({ ...filter, query })
+
+        expect(page.items.map((kit) => kit.slug)).toEqual(['bitki-organlari'])
+      },
+    )
+
     it('pages results and clamps an out-of-range page', async () => {
       const second = await kitRepository.list({ ...filter, pageSize: 2, page: 2 })
       const beyond = await kitRepository.list({ ...filter, pageSize: 2, page: 9 })

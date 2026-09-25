@@ -3,7 +3,7 @@ import { CARD_COLORS, newItemId, type StepOf } from '@/entities/kit'
 import { fieldId } from '../field-id'
 import { CardColorField, ItemListEditor, RichTextField, TextField } from '../fields'
 import { BlockEmojiField, SceneStateField } from './block-fields'
-import { firstUnused, itemName } from './list-items'
+import { blankItemError, firstUnused, itemName } from './list-items'
 import { nextSceneState } from './scene-states'
 import type { BlockEditorProps } from './types'
 
@@ -63,6 +63,7 @@ export function TapRevealEditor({ step, onChange, issueFor }: BlockEditorProps<'
 }
 
 export function StageSliderEditor({ step, onChange, issueFor }: BlockEditorProps<'stage-slider'>) {
+  const stagesIssue = issueFor('stages')
   const createStage = (): Stage => ({
     id: newItemId('st'),
     label: '',
@@ -85,7 +86,7 @@ export function StageSliderEditor({ step, onChange, issueFor }: BlockEditorProps
         max={6}
         create={createStage}
         addLabel="Evre ekle"
-        error={issueFor('stages')}
+        error={stagesIssue}
         itemLabel={(stage, index) => itemName(stage.label, `Evre ${index + 1}`)}
         renderItem={(stage, update) => (
           <div className="flex flex-col gap-4">
@@ -97,6 +98,7 @@ export function StageSliderEditor({ step, onChange, issueFor }: BlockEditorProps
                 onChange={(label) => update({ ...stage, label })}
                 max={30}
                 required
+                error={blankItemError(stagesIssue, stage.label, 'Evre adı gerekli.')}
                 placeholder="ör. Çimlenme"
               />
               <BlockEmojiField
@@ -124,6 +126,7 @@ export function ExploreHotspotsEditor({
   onChange,
   issueFor,
 }: BlockEditorProps<'explore-hotspots'>) {
+  const hotspotsIssue = issueFor('hotspots')
   const createHotspot = (): Hotspot => ({
     id: newItemId('h'),
     label: '',
@@ -163,7 +166,7 @@ export function ExploreHotspotsEditor({
         max={6}
         create={createHotspot}
         addLabel="Buton ekle"
-        error={issueFor('hotspots')}
+        error={hotspotsIssue}
         itemLabel={(hotspot, index) => itemName(hotspot.label, `Buton ${index + 1}`)}
         renderItem={(hotspot, update) => (
           <div className="flex flex-col gap-4">
@@ -175,6 +178,7 @@ export function ExploreHotspotsEditor({
                 onChange={(label) => update({ ...hotspot, label })}
                 max={24}
                 required
+                error={blankItemError(hotspotsIssue, hotspot.label, 'Buton adı gerekli.')}
                 placeholder="ör. Işık"
               />
               <BlockEmojiField
@@ -192,6 +196,7 @@ export function ExploreHotspotsEditor({
               multiline
               rows={2}
               required
+              error={blankItemError(hotspotsIssue, hotspot.message, 'Mesaj gerekli.')}
               placeholder="ör. Işık besin üretimini sağlar."
               description="Butona dokununca konuşma balonunda gösterilir."
             />

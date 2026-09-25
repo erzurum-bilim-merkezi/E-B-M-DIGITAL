@@ -448,6 +448,24 @@ describe('KitEditor', () => {
       expect(Element.prototype.scrollIntoView).toHaveBeenCalled()
     })
 
+    it('jumps from a missing quiz answer to the answer radio group', async () => {
+      const quiz = BLOK_VITRINI.steps.find((step) => step.type === 'quiz')
+      if (!quiz) throw new Error('BLOK_VITRINI has no quiz card')
+      const kit = await createKit({
+        ...KUCUK_CIFTCILER,
+        steps: [{ ...quiz, qrCode: 'KC-01', correctOptionId: '' }],
+      })
+      const { user } = renderEditor(kit)
+      await user.click(await screen.findByRole('tab', { name: /^Yayın/ }, FIRST_PAINT))
+
+      await user.click(screen.getByRole('button', { name: 'Git: Doğru cevabı işaretleyin.' }))
+
+      const answers = await screen.findByRole('radiogroup', { name: 'Doğru cevap' })
+      expect(answers).toHaveAttribute('aria-invalid', 'true')
+      // Focusing the group lands on its first radio (roving focus), so arrows pick an answer.
+      await waitFor(() => expect(within(answers).getAllByRole('radio')[0]).toHaveFocus())
+    })
+
     it('shows the badge issue on the "Rozet" tab', async () => {
       const kit = await createKit({
         ...KUCUK_CIFTCILER,

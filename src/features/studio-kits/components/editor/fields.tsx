@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Bold, Plus, Trash2 } from 'lucide-react'
 import { useId, useRef, useState, type ReactNode } from 'react'
 
 import { CARD_COLORS, type CardColor } from '@/entities/kit'
+import { useFocusAfterUpdate } from '@/shared/hooks/focus-hooks'
 import { cn } from '@/shared/lib/cn'
 import { handleRovingKeys, rovingTabIndex } from '@/shared/lib/roving-focus'
 import {
@@ -468,6 +469,8 @@ export function SelectField<T extends string>({
   )
 }
 
+const NBSP = String.fromCharCode(0xa0)
+
 function move<T>(items: readonly T[], from: number, to: number) {
   if (to < 0 || to >= items.length) return [...items]
   const next = [...items]
@@ -552,6 +555,51 @@ export function ItemListEditor<T>({
     onChange(nextItems)
   }
 
+  // Moves and deletes re-render the list: keep focus on a control and say what happened
+  // (WCAG 2.4.3, 4.1.3).
+  const focusAfterUpdate = useFocusAfterUpdate()
+  const addButton = useRef<HTMLButtonElement>(null)
+  const [announcement, setAnnouncement] = useState('')
+  /** Polite live region; a repeated message still changes the text, so it is read again. */
+  const announce = (message: string) =>
+    setAnnouncement((previous) => (previous === message ? message + NBSP : message))
+  const rowId = (key: string, part: 'title' | 'delete') => `${id}-${key}-${part}`
+  const canRemove = items.length > min
+
+  const moveItem = (index: number, to: number, pressed: HTMLElement) => {
+    const item = items[index]
+    if (item === undefined) return
+    const name = itemLabel(item, index)
+    if (to < 0) {
+      announce(`“${name}” zaten ilk sırada.`)
+      return
+    }
+    if (to >= items.length) {
+      announce(`“${name}” zaten son sırada.`)
+      return
+    }
+    // The row moves in the DOM, which drops focus: keep it on the arrow just pressed.
+    focusAfterUpdate(() => pressed)
+    commit(move(items, index, to), move(itemKeys.keys, index, to))
+    announce(`“${name}” ${to + 1}. sıraya taşındı.`)
+  }
+
+  const removeItem = (index: number) => {
+    const item = items[index]
+    if (item === undefined || !canRemove) return
+    const name = itemLabel(item, index)
+    // Focus goes to the next row's delete button, else the previous one's, else "add".
+    const neighbour = rows[index + 1] ?? rows[index - 1]
+    focusAfterUpdate(() =>
+      neighbour ? document.getElementById(rowId(neighbour.key, 'delete')) : addButton.current,
+    )
+    commit(
+      items.filter((_, itemIndex) => itemIndex !== index),
+      itemKeys.keys.filter((_, keyIndex) => keyIndex !== index),
+    )
+    announce(`“${name}” silindi.`)
+  }
+
   return (
     <fieldset
       id={id}
@@ -569,58 +617,62 @@ export function ItemListEditor<T>({
       <ol className="flex flex-col gap-3">
         {rows.map(({ item, key }, index) => {
           const name = itemLabel(item, index)
+          const first = index === 0
+          const last = index === items.length - 1
           return (
             <li key={key} className="rounded-lg border border-border bg-surface-muted/40 p-3">
-              <div className="mb-2 flex items-center gap-1">
-                <span className="flex-1 truncate text-xs font-medium text-fg-muted">
-                  {index + 1}. {name}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`${name} yukarı taşı`}
-                  disabled={index === 0}
-                  onClick={() =>
-                    commit(move(items, index, index - 1), move(itemKeys.keys, index, index - 1))
-                  }
-                >
-                  <ArrowUp aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`${name} aşağı taşı`}
-                  disabled={index === items.length - 1}
-                  onClick={() =>
-                    commit(move(items, index, index + 1), move(itemKeys.keys, index, index + 1))
-                  }
-                >
-                  <ArrowDown aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="danger-ghost"
-                  size="icon-sm"
-                  aria-label={`${name} sil`}
-                  disabled={items.length <= min}
-                  onClick={() =>
+              {/* A group per row, so its fields are heard with the row's name ("2. Tohum").
+                  Named by the title span, not a <legend>: the title shares a line with its
+                  buttons. Inside the <li>, so the list keeps its listitem semantics. */}
+              <fieldset aria-labelledby={rowId(key, 'title')} className="min-w-0">
+                <div className="mb-2 flex items-center gap-1">
+                  <span
+                    id={rowId(key, 'title')}
+                    className="flex-1 truncate text-xs font-medium text-fg-muted"
+                  >
+                    {index + 1}. {name}
+                  </span>
+                  {/* aria-disabled, not disabled: an arrow just pressed keeps focus at the ends. */}
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${name} yukarı taşı`}
+                    aria-disabled={first || undefined}
+                    onClick={(event) => moveItem(index, index - 1, event.currentTarget)}
+                  >
+                    <ArrowUp aria-hidden="true" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`${name} aşağı taşı`}
+                    aria-disabled={last || undefined}
+                    onClick={(event) => moveItem(index, index + 1, event.currentTarget)}
+                  >
+                    <ArrowDown aria-hidden="true" />
+                  </Button>
+                  {/* aria-disabled too: focus may land here after a delete that reaches `min`. */}
+                  <Button
+                    id={rowId(key, 'delete')}
+                    variant="danger-ghost"
+                    size="icon-sm"
+                    aria-label={`${name} sil`}
+                    aria-disabled={!canRemove || undefined}
+                    onClick={() => removeItem(index)}
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </Button>
+                </div>
+                {renderItem(
+                  item,
+                  (next) =>
                     commit(
-                      items.filter((_, itemIndex) => itemIndex !== index),
-                      itemKeys.keys.filter((_, keyIndex) => keyIndex !== index),
-                    )
-                  }
-                >
-                  <Trash2 aria-hidden="true" />
-                </Button>
-              </div>
-              {renderItem(
-                item,
-                (next) =>
-                  commit(
-                    items.map((existing, itemIndex) => (itemIndex === index ? next : existing)),
-                    itemKeys.keys,
-                  ),
-                index,
-              )}
+                      items.map((existing, itemIndex) => (itemIndex === index ? next : existing)),
+                      itemKeys.keys,
+                    ),
+                  index,
+                )}
+              </fieldset>
             </li>
           )
         })}
@@ -631,6 +683,7 @@ export function ItemListEditor<T>({
         </p>
       )}
       <Button
+        ref={addButton}
         variant="secondary"
         size="sm"
         className="self-start"
@@ -643,6 +696,7 @@ export function ItemListEditor<T>({
       >
         {addLabel}
       </Button>
+      <output className="sr-only">{announcement}</output>
     </fieldset>
   )
 }
@@ -657,6 +711,7 @@ export function StringListField({
   maxLength,
   placeholder,
   addLabel,
+  error,
 }: {
   id: string
   label: string
@@ -666,6 +721,8 @@ export function StringListField({
   maxLength: number
   placeholder?: string
   addLabel: string
+  /** Publish issue of the list; blank lines are then marked invalid and point at it. */
+  error?: string | undefined
 }) {
   return (
     <ItemListEditor
@@ -676,16 +733,22 @@ export function StringListField({
       max={max}
       create={() => ''}
       addLabel={addLabel}
+      error={error}
       itemLabel={(value, index) => value.trim() || `${index + 1}. satır`}
-      renderItem={(value, update, index) => (
-        <Input
-          aria-label={`${label} ${index + 1}`}
-          value={value}
-          maxLength={maxLength}
-          placeholder={placeholder}
-          onChange={(event) => update(event.target.value)}
-        />
-      )}
+      renderItem={(value, update, index) => {
+        const invalid = Boolean(error) && !value.trim()
+        return (
+          <Input
+            aria-label={`${label} ${index + 1}`}
+            value={value}
+            maxLength={maxLength}
+            placeholder={placeholder}
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? `${id}-error` : undefined}
+            onChange={(event) => update(event.target.value)}
+          />
+        )
+      }}
     />
   )
 }

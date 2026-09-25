@@ -66,6 +66,29 @@ describe('StringListField', () => {
     expect(soil).toHaveValue('Toprak')
   })
 
+  it('keeps the first row in place and says so when moved further up', async () => {
+    const { user } = renderWithProviders(<Materials initial={['Tohum', 'Toprak']} />)
+    const up = screen.getByRole('button', { name: 'Tohum yukarı taşı' })
+    expect(up).toHaveAttribute('aria-disabled', 'true')
+
+    up.focus()
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByRole('textbox', { name: 'Malzeme 1' })).toHaveValue('Tohum')
+    expect(up).toHaveFocus()
+    expect(screen.getByRole('status')).toHaveTextContent('“Tohum” zaten ilk sırada.')
+  })
+
+  it('focuses "add" after the only row is deleted', async () => {
+    const { user } = renderWithProviders(<Materials initial={['Tohum']} />)
+
+    await user.click(screen.getByRole('button', { name: 'Tohum sil' }))
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Malzeme ekle' })).toHaveFocus()
+    expect(screen.getByRole('status')).toHaveTextContent('“Tohum” silindi.')
+  })
+
   it('adds an empty row that can be filled in', async () => {
     const { user } = renderWithProviders(<Materials initial={['Tohum']} />)
 

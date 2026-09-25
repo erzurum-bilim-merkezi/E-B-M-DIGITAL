@@ -165,7 +165,7 @@ const LISTS = [
     max: 3,
   },
   { type: 'quiz', legend: 'Cevap seçenekleri', add: 'Seçenek ekle', prefix: 'q', min: 2, max: 4 },
-  { type: 'sequence', legend: 'Sıralama adımları', add: 'Adım ekle', prefix: 's', min: 3, max: 6 },
+  { type: 'sequence', legend: 'Sıralama adımları', add: 'Adım ekle', prefix: 's', min: 3, max: 8 },
   { type: 'matching', legend: 'Eşler', add: 'Eş ekle', prefix: 'p', min: 2, max: 5 },
   { type: 'experiment', legend: 'Deney adımları', add: 'Adım ekle', prefix: 'e', min: 1, max: 10 },
 ] as const
@@ -263,13 +263,19 @@ describe('BlockFieldsEditor', () => {
       }
 
       expect(itemsOf(current())).toHaveLength(min)
-      for (const button of removeButtons()) expect(button).toBeDisabled()
+      // aria-disabled, not disabled: focus can rest on them after the last allowed delete.
+      for (const button of removeButtons()) {
+        expect(button).toHaveAttribute('aria-disabled', 'true')
+      }
+      removeButtons()[0]!.focus()
+      await user.keyboard('{Enter}')
+      expect(itemsOf(current())).toHaveLength(min)
     },
   )
 
   it('shows publish issues as alerts tied to their fields', () => {
     renderEditor('quiz', {
-      issues: { question: 'Soru metni boş.', options: 'Doğru cevabı işaretleyin.' },
+      issues: { question: 'Soru metni boş.', correctOptionId: 'Doğru cevabı işaretleyin.' },
     })
 
     const alerts = screen.getAllByRole('alert').map((alert) => alert.textContent)
@@ -277,9 +283,110 @@ describe('BlockFieldsEditor', () => {
     const question = screen.getByRole('textbox', { name: /^Soru/ })
     expect(question).toBeInvalid()
     expect(question).toHaveAccessibleDescription('Soru metni boş.')
-    expect(screen.getByRole('group', { name: /^Cevap seçenekleri/ })).toHaveAccessibleDescription(
-      'Doğru cevabı işaretleyin.',
+    const answers = screen.getByRole('radiogroup', { name: 'Doğru cevap' })
+    expect(answers).toHaveAttribute('aria-invalid', 'true')
+    expect(answers).toHaveAccessibleDescription(
+      'Doğru seçenek silinirse ilk seçenek doğru cevap olur. Doğru cevabı işaretleyin.',
     )
+  })
+
+  it('marks blank item fields once their list has a publish issue', async () => {
+    const step = sample('quiz')
+    const blank = { ...step, options: [...step.options, { id: 'q-bos', label: '' }] }
+    const { unmount } = renderEditor('quiz', { step: blank })
+    // No list issue yet (e.g. a freshly added option): nothing is flagged.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    unmount()
+
+    renderEditor('quiz', { step: blank, issues: { options: 'Boş cevap seçeneği var.' } })
+
+    const fields = screen.getAllByRole('textbox', { name: /^Seçenek metni/ })
+    const empty = fields.at(-1)!
+    expect(empty).toBeInvalid()
+    expect(empty).toHaveAccessibleDescription('Seçenek metni gerekli.')
+    for (const filled of fields.slice(0, -1)) expect(filled).toBeValid()
+    expect(screen.getByRole('group', { name: /^Cevap seçenekleri/ })).toHaveAccessibleDescription(
+      'Boş cevap seçeneği var.',
+    )
+  })
+
+  it('shows blank experiment material lines as invalid', () => {
+    const step = { ...sample('experiment'), materials: ['Bardak', ' '] }
+    renderEditor('experiment', {
+      step,
+      issues: { materials: 'Boş malzeme ya da güvenlik satırı var.' },
+    })
+
+    expect(screen.getByRole('textbox', { name: 'Malzemeler 1' })).toBeValid()
+    const blank = screen.getByRole('textbox', { name: 'Malzemeler 2' })
+    expect(blank).toBeInvalid()
+    expect(blank).toHaveAccessibleDescription('Boş malzeme ya da güvenlik satırı var.')
+  })
+
+  describe('list rows', () => {
+    it('names each row group after its title', () => {
+      renderEditor('sequence')
+      const list = screen.getByRole('group', { name: /^Sıralama adımları/ })
+      const [first] = within(list).getAllByRole('listitem')
+
+      const row = within(first!).getByRole('group', { name: '1. Tohum' })
+      expect(within(row).getByRole('textbox', { name: /^Adım/ })).toHaveValue('Tohum')
+    })
+
+    it('keeps focus on the pressed arrow and announces the move', async () => {
+      const { user, current } = renderEditor('sequence')
+      const down = screen.getByRole('button', { name: 'Tohum aşağı taşı' })
+
+      await user.click(down)
+
+      expect(current().items[1]?.label).toBe('Tohum')
+      expect(down).toHaveFocus()
+      expect(screen.getByRole('status')).toHaveTextContent('“Tohum” 2. sıraya taşındı.')
+
+      await user.keyboard('{Enter}')
+      await user.keyboard('{Enter}')
+      expect(current().items.at(-1)?.label).toBe('Tohum')
+      expect(down).toHaveFocus()
+      expect(down).toHaveAttribute('aria-disabled', 'true')
+
+      await user.keyboard('{Enter}')
+      expect(current().items.at(-1)?.label).toBe('Tohum')
+      expect(screen.getByRole('status')).toHaveTextContent('“Tohum” zaten son sırada.')
+      // The same message again still changes the live region, so it is read again.
+      const before = screen.getByRole('status').textContent
+      await user.keyboard('{Enter}')
+      expect(screen.getByRole('status').textContent).not.toBe(before)
+    })
+
+    it('moves focus to the next row’s delete button and announces the delete', async () => {
+      const { user, current } = renderEditor('sequence')
+
+      await user.click(screen.getByRole('button', { name: 'Tohum sil' }))
+
+      expect(current().items.map((item) => item.label)).toEqual(['Çimlenme', 'Fide', 'Marul'])
+      expect(screen.getByRole('status')).toHaveTextContent('“Tohum” silindi.')
+      // The list is at its minimum now: the button is aria-disabled, yet keeps focus.
+      const next = screen.getByRole('button', { name: 'Çimlenme sil' })
+      expect(next).toHaveFocus()
+      expect(next).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('moves focus to the previous row’s delete button after deleting the last row', async () => {
+      const { user } = renderEditor('sequence')
+
+      await user.click(screen.getByRole('button', { name: 'Marul sil' }))
+
+      expect(screen.getByRole('button', { name: 'Fide sil' })).toHaveFocus()
+    })
+
+    it('moves focus to "add" when the last row of an optional list is deleted', async () => {
+      const step = { ...sample('experiment'), materials: ['Bardak'] }
+      const { user } = renderEditor('experiment', { step })
+
+      await user.click(screen.getByRole('button', { name: 'Bardak sil' }))
+
+      expect(screen.getByRole('button', { name: 'Malzeme ekle' })).toHaveFocus()
+    })
   })
 
   describe('quiz', () => {

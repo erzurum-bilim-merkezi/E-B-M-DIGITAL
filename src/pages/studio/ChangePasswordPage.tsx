@@ -27,6 +27,7 @@ export function ChangePasswordPage() {
         </p>
       </div>
       <ChangePasswordForm
+        requireCurrent={!session.user.mustChangePassword}
         onResult={(result) => navigate(nextAuthPath(result, donus), { replace: true })}
       />
     </section>

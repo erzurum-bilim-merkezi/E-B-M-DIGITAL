@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import type { ActivityEvent } from '@/entities/activity'
 import { mergeProgress, type EarnedBadge, type ExplorerProgress } from '@/entities/explorer'
@@ -7,7 +7,7 @@ import { isKitComplete, kitProgressRatio, type KitDocument } from '@/entities/ki
 import { KIDS_QUERY_ROOT } from '@/shared/api/query-keys'
 
 import { progressService } from './index'
-import { eventQueue, flushQueue, onFlushed, pendingEvents } from './queue'
+import { eventQueue, flushQueue, onFlushed, pendingEvents, track } from './queue'
 
 export const progressKeys = {
   all: [KIDS_QUERY_ROOT, 'progress'] as const,
@@ -100,6 +100,37 @@ export function kitProgressSummary(
     done: isKitComplete(kit, completed),
     completedCount: kit.steps.filter((step) => completed.has(step.id)).length,
   }
+}
+
+/**
+ * R13: reports `kit_complete` once all required cards are done and no completion is known yet —
+ * from whichever page sees it first (the card that finishes the kit, or the completion page), in
+ * both QR entry modes. A queued completion counts as known, so it is never sent twice.
+ */
+export function useKitCompletion(
+  kit: Pick<KitDocument, 'id' | 'steps'>,
+  explorerId: string | null | undefined,
+) {
+  const { progress, isPending } = useExplorerProgress(explorerId)
+  const row = progress.get(kit.id)
+  const summary = kitProgressSummary(kit, row)
+  const reported = useRef(false)
+  const completedAt = row?.completedAt ?? null
+  const durationMs = row?.totalDurationMs ?? 0
+
+  useEffect(() => {
+    if (!explorerId || isPending || !summary.done || completedAt || reported.current) return
+    reported.current = true
+    track({
+      type: 'kit_complete',
+      explorerId,
+      kitId: kit.id,
+      stepId: null,
+      data: { durationMs },
+    })
+  }, [completedAt, durationMs, explorerId, isPending, kit.id, summary.done])
+
+  return { summary, row, isPending }
 }
 
 export function useExplorerBadges(explorerId: string | null | undefined) {

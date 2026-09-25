@@ -135,7 +135,7 @@ describe('PrintSheet', () => {
     expect(within(box).getByText('Küçük Çiftçiler')).toBeInTheDocument()
     expect(within(box).getByRole('img', { name: 'KC QR kodu' })).toBeInTheDocument()
     expect(within(box).getByText('KC')).toBeInTheDocument()
-    for (const step of ['Kâşif uygulamasını aç', "QR Okut'a dokun", 'Kartı okut']) {
+    for (const step of ['Kâşif uygulamasını aç', "QR Okut'a dokun", "Her kartın QR'ını okut"]) {
       expect(within(box).getByText(step)).toBeInTheDocument()
     }
     for (const card of cards) {

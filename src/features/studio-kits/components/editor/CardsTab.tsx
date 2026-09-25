@@ -214,6 +214,7 @@ export function CardsTab({
         {draft.steps.length > 0 && (
           <StepList
             steps={draft.steps}
+            showQrCodes={draft.qrEntryMode !== 'full'}
             selectedId={selected?.id ?? null}
             issues={issues}
             onSelect={onSelect}

@@ -87,15 +87,58 @@ describe('Kâşif app', () => {
     expect(router.state.location.search).toBe('?giris=qr')
   })
 
+  it('one kit QR starts a single-QR kit and the child carries on card by card', async () => {
+    const { user, router } = renderApp('/?q=BV')
+    await join(user, 'Can')
+
+    // "Bir QR yeter": the kit's QR opens its first card, not the menu.
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Bitkiler de canlıdır/ }),
+    ).toBeVisible()
+    await user.click(screen.getByRole('link', { name: /Sıradaki kart/ }))
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/kit/blok-vitrini/${BLOK_VITRINI_CARDS[1]}`),
+    )
+
+    // Later: the kit page and the Science Centre tile both lead back to the next card to play.
+    await router.navigate('/kit/blok-vitrini')
+    expect(await screen.findByRole('link', { name: /Kaldığın yerden devam et/ })).toHaveAttribute(
+      'href',
+      `/kit/blok-vitrini/${BLOK_VITRINI_CARDS[1]}`,
+    )
+    await router.navigate('/')
+    expect(await screen.findByRole('link', { name: /Blok Vitrini/ })).toHaveTextContent('Devam et')
+
+    // Scanning the kit QR again resumes where the child left off.
+    await router.navigate('/q/BV')
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/kit/blok-vitrini/${BLOK_VITRINI_CARDS[1]}`),
+    )
+  })
+
+  it('the kit QR of a card-by-card kit opens the kit with a hint to scan the cards', async () => {
+    const { user } = renderApp('/?q=KC')
+    await join(user, 'Ece')
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Küçük Çiftçiler' })).toBeVisible()
+    expect(screen.getByText(/her kartın kendi QR kodu var/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /QR okut/ })).toHaveAttribute('href', '/qr-okut')
+  })
+
   it('plays Küçük Çiftçiler to the end and earns the kit badge', async () => {
     const { user } = renderApp('/?q=KC-01')
     await join(user, 'Mert')
     const next = async () =>
       user.click(await screen.findByRole('link', { name: /Bu kitteki diğer kartlar/ }))
 
-    // Focused QR entry: play card 1, then continue from the kit menu.
+    // Focused QR entry: play card 1 — the child is asked for the next card's QR — then
+    // continue from the kit menu.
     await user.click(await screen.findByRole('button', { name: 'Tohuma dokun!' }))
     expect(await screen.findByText(/Filiz çıktı!/)).toBeInTheDocument()
+    expect(
+      await screen.findByRole('link', { name: /Sıradaki kartın QR'ını okut/ }),
+    ).toHaveAttribute('href', '/qr-okut')
+    expect(screen.getByText(/1 \/ 7 kart tamamlandı/)).toBeInTheDocument()
     await next()
     expect(await screen.findByText('1 / 7 kart tamamlandı')).toBeInTheDocument()
 

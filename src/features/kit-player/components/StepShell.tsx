@@ -19,15 +19,26 @@ type StepShellProps = {
   kit: KitDocument
   step: Step
   index: number
-  /** QR entry in "focused" mode: only this card, no kit navigation (R2). */
+  /**
+   * QR entry in "Her kart kendi QR'ı ile" mode (R2): only this card, no kit navigation. Once the
+   * card is done the child is asked to scan the next card's QR.
+   */
   focused: boolean
   nav: {
     home: NavTarget
+    /** The next card to play ("Sıradaki kart"); absent when no other card is left. */
     next?: NavTarget | undefined
+    /** The completion page, offered once the kit is complete. */
     finish?: NavTarget | undefined
     allCards?: NavTarget | undefined
+    /** Focused mode: the QR scanner for the next card. */
+    scanNext?: NavTarget | undefined
   }
   completed: boolean
+  /** Every required card is done (this one included): offer the completion page. */
+  kitDone?: boolean
+  /** Required cards done / total, shown after a card in focused mode. */
+  progress?: { done: number; total: number } | undefined
   onStepComplete: (meta: BlockCompletion) => void
   onQuizAnswer?: (answer: { correct: boolean; optionId: string }) => void
   /** Extra content under the answer (e.g. preview banner). */
@@ -66,6 +77,9 @@ function NavButton({
   )
 }
 
+const PRIMARY = 'bg-kid-accent text-kid-accent-fg shadow-kid-3d-accent'
+const SECONDARY = 'bg-kid-surface text-kid-fg shadow-kid-soft ring-2 ring-kid-border'
+
 function narrationFor(step: Step) {
   const base = step.narration.trim() || `${step.title}. ${richTextToPlain(step.answer)}`
   return base.trim()
@@ -82,6 +96,8 @@ export function StepShell({
   focused,
   nav,
   completed,
+  kitDone = false,
+  progress,
   onStepComplete,
   onQuizAnswer,
   footer,
@@ -91,7 +107,6 @@ export function StepShell({
   const headingRef = useRef<HTMLHeadingElement>(null)
   const audioUrl = useResolvedMediaUrl(step.audio?.url)
   const total = kit.steps.length
-  const last = index === total - 1
 
   // Move focus to the new question on navigation (screen readers announce it).
   useEffect(
@@ -169,42 +184,56 @@ export function StepShell({
 
       {footer}
 
+      {focused && completed && !kitDone && progress && (
+        <p className="text-center text-lg font-semibold text-kid-fg-soft">
+          Harika! {progress.done} / {progress.total} kart tamamlandı. Sıradaki kartın QR kodunu bul.
+        </p>
+      )}
+
       <nav aria-label="Kart gezinmesi" className="mt-2 flex flex-wrap gap-3 pb-4">
         {focused ? (
-          nav.allCards && (
-            <NavButton
-              target={nav.allCards}
-              className="bg-kid-surface text-kid-fg shadow-kid-soft ring-2 ring-kid-border"
-            >
-              🗂️ Bu kitteki diğer kartlar
-            </NavButton>
-          )
-        ) : last ? (
           <>
-            <NavButton
-              target={nav.home}
-              className="bg-kid-surface text-kid-fg shadow-kid-soft ring-2 ring-kid-border"
-            >
-              🏠 Kitin ana sayfası
-            </NavButton>
-            {nav.finish && (
-              <NavButton
-                target={nav.finish}
-                className="bg-kid-accent text-kid-accent-fg shadow-kid-3d-accent"
-              >
-                🎉 Bitirdim!
+            {kitDone && nav.finish ? (
+              <NavButton target={nav.finish} className={PRIMARY}>
+                🎉 Kiti bitirdin!
+              </NavButton>
+            ) : (
+              completed &&
+              nav.scanNext && (
+                <NavButton target={nav.scanNext} className={PRIMARY}>
+                  📷 Sıradaki kartın QR'ını okut
+                </NavButton>
+              )
+            )}
+            {nav.allCards && (
+              <NavButton target={nav.allCards} className={SECONDARY}>
+                🗂️ Bu kitteki diğer kartlar
               </NavButton>
             )}
           </>
-        ) : (
-          nav.next && (
-            <NavButton
-              target={nav.next}
-              className="bg-kid-accent text-kid-accent-fg shadow-kid-3d-accent"
-            >
-              Sıradaki kart ➜
+        ) : kitDone && nav.finish ? (
+          <>
+            {nav.next ? (
+              <NavButton target={nav.next} className={SECONDARY}>
+                Sıradaki kart ➜
+              </NavButton>
+            ) : (
+              <NavButton target={nav.home} className={SECONDARY}>
+                🏠 Kitin ana sayfası
+              </NavButton>
+            )}
+            <NavButton target={nav.finish} className={PRIMARY}>
+              🎉 Bitirdim!
             </NavButton>
-          )
+          </>
+        ) : nav.next ? (
+          <NavButton target={nav.next} className={PRIMARY}>
+            Sıradaki kart ➜
+          </NavButton>
+        ) : (
+          <NavButton target={nav.home} className={SECONDARY}>
+            🏠 Kitin ana sayfası
+          </NavButton>
         )}
       </nav>
     </article>

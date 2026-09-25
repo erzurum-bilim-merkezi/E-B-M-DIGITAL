@@ -55,6 +55,7 @@ type RowProps = {
   count: number
   selected: boolean
   errorCount: number
+  showQrCode: boolean
   onSelect: () => void
   /** `byKeyboard`: Alt + ↑/↓ on the card, which keeps focus on it after the move. */
   onMove: (to: number, byKeyboard?: boolean) => void
@@ -68,6 +69,7 @@ function StepRow({
   count,
   selected,
   errorCount,
+  showQrCode,
   onSelect,
   onMove,
   onDuplicate,
@@ -137,7 +139,8 @@ function StepRow({
             {index + 1}. {title}
           </span>
           <span className="truncate text-xs text-fg-subtle">
-            {meta.label} · {step.qrCode}
+            {meta.label}
+            {showQrCode && ` · ${step.qrCode}`}
           </span>
         </span>
       </button>
@@ -182,8 +185,11 @@ export function StepList({
   onMove,
   onDuplicate,
   onRemove,
+  showQrCodes = true,
 }: {
   steps: readonly Step[]
+  /** Card QR codes are hidden in single-QR ("Bir QR yeter") kits, where they are never printed. */
+  showQrCodes?: boolean
   selectedId: string | null
   issues: readonly KitIssue[]
   onSelect: (stepId: string) => void
@@ -282,6 +288,7 @@ export function StepList({
                 index={index}
                 count={steps.length}
                 selected={step.id === selectedId}
+                showQrCode={showQrCodes}
                 errorCount={
                   issues.filter((issue) => issue.stepId === step.id && issue.severity === 'error')
                     .length

@@ -1,6 +1,8 @@
 import { ScanLine } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 
+import type { KitDocument } from '@/entities/kit'
+
 import { cn } from '@/shared/lib/cn'
 import { Alert, EmptyState, QrCode } from '@/shared/ui'
 
@@ -23,6 +25,7 @@ import {
 import type { QrLabel } from '../lib/qr-image'
 
 export type PrintLabel = QrLabel & { iconEmoji?: string }
+type QrEntryMode = KitDocument['qrEntryMode']
 
 export type PrintSheetProps = {
   template: PrintTemplate
@@ -38,6 +41,8 @@ export type PrintSheetProps = {
   /** Card template: adds a mirrored back page for duplex printing. Box template: footnote. */
   backNote?: string
   kitTitle: string
+  /** Box template: how children move through the kit after a scan. */
+  entryMode?: QrEntryMode
   className?: string
 }
 
@@ -64,7 +69,11 @@ const PRINT_CSS = `
 }
 `
 
-const BOX_STEPS = ['Kâşif uygulamasını aç', "QR Okut'a dokun", 'Kartı okut'] as const
+/** "Nasıl kullanılır?" on the box label follows the kit's QR entry mode. */
+const BOX_STEPS: Record<QrEntryMode, readonly string[]> = {
+  focused: ['Kâşif uygulamasını aç', "QR Okut'a dokun", "Her kartın QR'ını okut"],
+  full: ['Kâşif uygulamasını aç', "QR Okut'a dokun", "Kit QR'ını okut, kartlarla sırayla ilerle"],
+}
 /** Codes listed on a box label before "+N kart daha" (keeps the A6 label from overflowing). */
 const BOX_CARD_LIMIT = 16
 const CUT_LINE = 'border-dashed border-border-strong'
@@ -330,11 +339,13 @@ function BoxLabel({
   cards,
   kitTitle,
   note,
+  entryMode,
 }: {
   kit: PrintLabel
   cards: readonly PrintLabel[]
   kitTitle: string
   note: string | undefined
+  entryMode: QrEntryMode
 }) {
   const listed = cards.length > BOX_CARD_LIMIT ? cards.slice(0, BOX_CARD_LIMIT - 1) : cards
   const more = cards.length - listed.length
@@ -361,7 +372,7 @@ function BoxLabel({
 
       <p className="mt-[5mm] text-[9pt] font-bold text-fg">Nasıl kullanılır?</p>
       <ol className="mt-[1.5mm] flex flex-col gap-[1.2mm] text-[8.5pt] leading-tight text-fg">
-        {BOX_STEPS.map((step, index) => (
+        {BOX_STEPS[entryMode].map((step, index) => (
           <li key={step} className="flex items-center gap-[2mm]">
             <span
               aria-hidden="true"
@@ -401,6 +412,7 @@ function boxPages(
   labels: readonly PrintLabel[],
   kitTitle: string,
   note: string | undefined,
+  entryMode: QrEntryMode,
 ): SheetPage[] {
   const { kit, cards } = splitKitLabel(labels)
   if (!kit) return []
@@ -418,7 +430,7 @@ function boxPages(
             slot < BOX_GRID.columns && 'border-b',
           )}
         >
-          <BoxLabel kit={kit} cards={cards} kitTitle={kitTitle} note={note} />
+          <BoxLabel kit={kit} cards={cards} kitTitle={kitTitle} note={note} entryMode={entryMode} />
         </li>
       ))}
     </ul>
@@ -445,6 +457,7 @@ export function PrintSheet({
   gapMm,
   backNote,
   kitTitle,
+  entryMode = 'focused',
   className,
 }: PrintSheetProps) {
   if (labels.length === 0) {
@@ -465,7 +478,7 @@ export function PrintSheet({
     template === 'card'
       ? cardPages(labels, note, kitTitle)
       : template === 'box'
-        ? boxPages(labels, kitTitle, note)
+        ? boxPages(labels, kitTitle, note, entryMode)
         : grid
           ? labelPages(labels, grid)
           : []

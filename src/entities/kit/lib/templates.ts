@@ -159,7 +159,7 @@ export function createKitFromTemplate(templateId: KitTemplateId, input: NewKitIn
     safetyNotes: sample ? [...KUCUK_CIFTCILER.safetyNotes] : [],
     qrPrefix: input.qrPrefix,
     qrSequence: steps.length,
-    qrEntryMode: 'focused',
+    qrEntryMode: 'full',
     badge: sample
       ? { ...KUCUK_CIFTCILER.badge }
       : {

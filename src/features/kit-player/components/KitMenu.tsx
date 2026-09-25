@@ -129,6 +129,15 @@ export function KitTile({
           {entry.ageRange.min}–{entry.ageRange.max} yaş
         </span>
         <span className="rounded-full bg-kid-surface-2 px-3 py-1">{entry.stepCount} kart</span>
+        {ratio >= 1 ? (
+          <span className="rounded-full bg-kid-surface-2 px-3 py-1 text-kid-fg">✅ Tamamlandı</span>
+        ) : (
+          ratio > 0 && (
+            <span className="rounded-full bg-kid-accent px-3 py-1 text-kid-accent-fg">
+              ▶ Devam et
+            </span>
+          )
+        )}
       </div>
     </Link>
   )

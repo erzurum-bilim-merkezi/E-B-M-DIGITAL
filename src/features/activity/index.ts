@@ -17,6 +17,7 @@ export {
   useActivitySync,
   useExplorerBadges,
   useExplorerProgress,
+  useKitCompletion,
   useResetKitProgress,
 } from './api/queries'
 export { BadgeGrid, type KitBadgeInfo } from './components/Badges'

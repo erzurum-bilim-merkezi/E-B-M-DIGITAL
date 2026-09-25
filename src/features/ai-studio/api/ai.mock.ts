@@ -441,7 +441,7 @@ export function createMockAiService(): AiService {
         materials: [],
         safetyNotes: [],
         qrSequence: cardCount,
-        qrEntryMode: 'focused',
+        qrEntryMode: 'full',
         badge: {
           name: `${title} Kâşifi`.slice(0, 30),
           emoji: '🏅',

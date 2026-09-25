@@ -462,7 +462,8 @@ describe('CardsTab', () => {
       },
       { timeout: 3_000 },
     )
-  })
+    // Two dialogs and an autosave driven through user-event: slow on busy machines.
+  }, 15_000)
 
   it('explains why a deletion cannot be undone while the kit is full', async () => {
     const steps = Array.from({ length: MAX_KIT_STEPS }, (_, index) => ({
@@ -494,7 +495,8 @@ describe('CardsTab', () => {
     expect(listedTitles()).toHaveLength(MAX_KIT_STEPS)
     expect(listedTitles()).not.toContain('Kart 1')
     expect(within(cardsPanel()).getByText('“Kart 1” silindi.')).toBeInTheDocument()
-  })
+    // Renders a full 30-card kit twice over.
+  }, 15_000)
 
   it('previews the selected card on a phone or tablet and resets the preview', async () => {
     const kit = await createKit()

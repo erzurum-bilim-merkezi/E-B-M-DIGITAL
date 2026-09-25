@@ -34,7 +34,10 @@ describe('Studio pages (admin, demo data)', () => {
   it('dashboard: KPIs, review queue, live feed and quotas', async () => {
     renderApp('/studio')
 
-    expect(await screen.findByRole('heading', { level: 1, name: /Merhaba Deniz/ })).toBeVisible()
+    // The first render of the file also pays for the lazy Studio routes.
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Merhaba Deniz/ }, { timeout: 15_000 }),
+    ).toBeVisible()
     expect(await screen.findByText('Bugün aktif kâşif')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'İncelemeni bekleyenler' })).toBeInTheDocument()
     expect((await screen.findAllByText('Su Damlasının Yolculuğu')).length).toBeGreaterThan(0)

@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { mediaAssetSchema, type MediaAsset } from '@/entities/studio'
 import { AppError } from '@/shared/api/errors'
-import { publicObjectUrl, staffClient, toAppError, unwrap } from '@/shared/api/supabase'
+import { mediaObjectUrl, readAll, staffClient, toAppError, unwrap } from '@/shared/api/supabase'
 import { AUDIO_MAX_BYTES, CAPTIONS_MAX_BYTES, ICON_MAX_BYTES } from '@/shared/lib/media-files'
 
 import type { MediaRepository, MediaUsage, StorageQuota } from './port'
@@ -10,8 +10,8 @@ import type { MediaRepository, MediaUsage, StorageQuota } from './port'
 /*
  * Media library on Supabase (ADR 0020): files in the public `media` bucket under uploads/<id>,
  * one media_assets row each. The browser checks type, size and alt text first (same rules as
- * the mock); media_register checks them again against the stored object. AI drawings are stored
- * by the ai-generate function, never uploaded from here.
+ * the mock); media_register checks them again against the stored object. AI drawings live in the
+ * `ai` bucket, stored by the ai-generate function and never uploaded from here.
  */
 
 const IMAGE_LIMIT = 300 * 1000
@@ -47,7 +47,7 @@ const rowSchema = mediaAssetSchema.omit({ url: true }).extend({ path: z.string()
 /** A stored row → the asset the app uses (the URL is derived from the object path). */
 function toAsset(row: unknown): MediaAsset {
   const { path, ...asset } = rowSchema.parse(row)
-  return { ...asset, url: publicObjectUrl('media', path) }
+  return { ...asset, url: mediaObjectUrl(asset.kind, path) }
 }
 
 async function rpc(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
@@ -57,17 +57,17 @@ async function rpc(name: string, args: Record<string, unknown> = {}): Promise<un
 export function createSupabaseMediaRepository(): MediaRepository {
   return {
     async list(filter) {
-      let query = staffClient().from('media_assets').select(COLUMNS).order('created_at', {
-        ascending: false,
-      })
-      if (filter.kind !== 'all') query = query.eq('kind', filter.kind)
       const needle = filter.query
         .trim()
         .replace(/[%,()*]/g, ' ')
         .trim()
-      if (needle) query = query.or(`name.ilike.*${needle}*,alt.ilike.*${needle}*`)
-      const rows = unwrap(await query)
-      return z.array(z.unknown()).parse(rows).map(toAsset)
+      const rows = await readAll((from, to) => {
+        let query = staffClient().from('media_assets').select(COLUMNS)
+        if (filter.kind !== 'all') query = query.eq('kind', filter.kind)
+        if (needle) query = query.or(`name.ilike.*${needle}*,alt.ilike.*${needle}*`)
+        return query.order('created_at', { ascending: false }).order('id').range(from, to)
+      })
+      return rows.map(toAsset)
     },
 
     async getMany(ids) {
@@ -151,11 +151,13 @@ export function createSupabaseMediaRepository(): MediaRepository {
     },
 
     async remove(id) {
-      const path = z.string().parse(await rpc('media_delete', { p_id: id }))
+      const file = z
+        .object({ bucket: z.enum(['media', 'ai']), path: z.string() })
+        .parse(await rpc('media_delete', { p_id: id }))
       // The record is gone; a leftover file is harmless and never referenced again.
       await staffClient()
-        .storage.from('media')
-        .remove([path])
+        .storage.from(file.bucket)
+        .remove([file.path])
         .catch(() => undefined)
     },
 

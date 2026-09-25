@@ -16,9 +16,10 @@ const url = required('SUPABASE_URL')
 const serviceKey = required('SUPABASE_SERVICE_ROLE_KEY')
 const dbUrl = required('SUPABASE_DB_URL')
 for (const target of [url, dbUrl]) {
-  const host = new URL(target).hostname
-  if (host !== '127.0.0.1' && host !== 'localhost') {
-    throw new Error(`E2E seeding runs on the local stack only (got ${host}).`)
+  const parsed = new URL(target)
+  // No query parameters: pg reads ?host= (and friends) over the URL's own host.
+  if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || parsed.search !== '') {
+    throw new Error(`E2E seeding runs on the local stack only (got ${parsed.host}).`)
   }
 }
 

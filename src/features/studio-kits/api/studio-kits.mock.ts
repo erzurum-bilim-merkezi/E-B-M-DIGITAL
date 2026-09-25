@@ -87,12 +87,11 @@ function regenerate() {
   qrIndexDoc.set(buildQrIndex(kits, versions, qrTable.all(), timestamp))
   for (const kit of kits) {
     const latest = latestVersionOf(kit.id, versions)
-    if (latest) {
-      mockDoc(MOCK_DOCS.latest(latest.document.slug), latestPointerSchema).set({
-        version: latest.version,
-        publishedAt: latest.publishedAt,
-      })
-    }
+    if (!latest) continue
+    const pointer = mockDoc(MOCK_DOCS.latest(latest.document.slug), latestPointerSchema)
+    // An archived kit no longer opens by its address (its QR codes say it is archived).
+    if (kit.status === 'archived') pointer.remove()
+    else pointer.set({ version: latest.version, publishedAt: latest.publishedAt })
   }
   publishState.set({ generation })
 }

@@ -87,16 +87,17 @@ as $$
   )
 $$;
 
--- First address of X-Forwarded-For as PostgREST passes it on; null outside an API request.
+-- The caller's address as Cloudflare (in front of every hosted Supabase project) states it. The
+-- client cannot set this header; X-Forwarded-For it can. Null locally and outside API requests.
 create function private.client_ip()
 returns text
 language sql
 stable
 set search_path = ''
 as $$
-  select nullif(btrim(split_part(
-    coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-forwarded-for', ''),
-    ',', 1)), '')
+  select nullif(btrim(
+    coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'cf-connecting-ip', '')
+  ), '')
 $$;
 
 -- Per-IP guard over all devices behind one address: 50 failures in 15 minutes.
@@ -220,6 +221,7 @@ begin
       -- Another member holds this hash (1 in 10^12): draw again.
     end;
   end loop;
+  return null; -- not reached: the loop only ends by returning
 end;
 $$;
 
@@ -248,6 +250,21 @@ begin
   if not private.can_link_more(v_device) then
     perform private.raise('conflict', 'Bu cihaza en fazla 10 kâşif eklenebilir. Önce birini çıkarın.');
   end if;
+  -- New members per device and hour: enough for a class on a centre tablet, not for a script
+  -- filling the database.
+  perform private.lock_attempts('register', v_device::text);
+  if coalesce((
+    select c.count from public.rate_limit_counters c
+    where c.bucket = 'register' and c.subject = v_device::text
+      and c.window_start = date_trunc('hour', now())
+  ), 0) >= 30 then
+    perform private.raise('rate_limited',
+      'Bu cihazda çok fazla yeni kâşif oluşturuldu. Biraz sonra tekrar deneyin.');
+  end if;
+  insert into public.rate_limit_counters (bucket, subject, window_start, count)
+  values ('register', v_device::text, date_trunc('hour', now()), 1)
+  on conflict (bucket, subject, window_start)
+  do update set count = public.rate_limit_counters.count + 1;
 
   insert into public.explorers (nickname, avatar, display_code, created_via)
   values (
@@ -280,6 +297,7 @@ declare
   v_remaining integer;
   v_locked constant text := 'Çok fazla yanlış deneme oldu. 15 dakika sonra tekrar dene ya da eğitmenine sor.';
 begin
+  perform private.lock_attempts('restore', v_device::text);
   if private.attempt_locked('restore', v_device::text) or private.ip_locked('restore') then
     return private.error('rate_limited', v_locked);
   end if;
@@ -387,9 +405,11 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_device uuid := private.require_device();
 begin
   delete from public.explorer_devices d
-  where d.explorer_id = p_explorer and d.device_uid = private.require_device();
+  where d.explorer_id = p_explorer and d.device_uid = v_device;
 end;
 $$;
 
@@ -399,8 +419,10 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_device uuid := private.require_device();
 begin
-  delete from public.explorer_devices d where d.device_uid = private.require_device();
+  delete from public.explorer_devices d where d.device_uid = v_device;
 end;
 $$;
 
@@ -432,6 +454,7 @@ declare
   v_remaining integer;
   v_locked constant text := 'Çok fazla yanlış kurulum kodu denendi. 15 dakika sonra tekrar deneyin.';
 begin
+  perform private.lock_attempts('center-setup', v_device::text);
   if private.attempt_locked('center-setup', v_device::text) or private.ip_locked('center-setup') then
     return private.error('rate_limited', v_locked);
   end if;
@@ -483,6 +506,7 @@ begin
   if v_center.id is null then
     return jsonb_build_object('ok', true);
   end if;
+  perform private.lock_attempts('center-pin', v_device::text);
   if private.attempt_locked('center-pin', v_device::text) then
     return private.error('rate_limited', v_locked);
   end if;

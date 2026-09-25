@@ -156,7 +156,7 @@ describe('Supabase AI service: drawings', () => {
       height: 64,
       durationSec: null,
       alt: 'roket ikonu',
-      path: `ai/icons/${id}.svg`,
+      path: `icons/${id}.svg`,
       source: 'ai',
       sceneGroup: null,
       sceneState: null,
@@ -168,7 +168,7 @@ describe('Supabase AI service: drawings', () => {
 
     expect(bodies).toEqual([{ action: 'save-icon', svg, concept: 'roket' }])
     expect(asset).toMatchObject({ id, kind: 'ai-icon', source: 'ai' })
-    expect(asset.url).toBe(`${SUPABASE_URL}/storage/v1/object/public/media/ai/icons/${id}.svg`)
+    expect(asset.url).toBe(`${SUPABASE_URL}/storage/v1/object/public/ai/icons/${id}.svg`)
     expect(asset).not.toHaveProperty('path')
   })
 })

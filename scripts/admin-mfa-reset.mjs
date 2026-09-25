@@ -40,8 +40,15 @@ if (failed?.error) {
   console.error(`Could not remove an authenticator: ${failed.error.message}`)
   process.exit(1)
 }
-// Open sessions end with their access token (30 min); the next sign-in asks for a new
-// authenticator.
+// Every session ends now: whoever holds the lost phone's session cannot renew it, and its
+// access token runs out within jwt_expiry (30 min). The next sign-in asks for a new authenticator.
+const ended = await admin.rpc('staff_end_sessions', { p_user: userId })
+if (ended.error) {
+  console.error(
+    `Authenticators removed, but the sessions could not be ended: ${ended.error.message}`,
+  )
+  process.exit(1)
+}
 await admin.from('audit_log').insert({
   actor_id: null,
   action: 'auth.mfa_reset',

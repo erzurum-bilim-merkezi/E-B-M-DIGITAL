@@ -27,7 +27,8 @@ export const QR_SCAN_SOURCE_LABELS: Record<QrScanSource, string> = {
   manual: 'Elle yazılan kod',
 }
 
-const MAX_DURATION_MS = 6 * 60 * 60 * 1000
+/** Longest duration an event may report (a card or a whole kit): 6 hours. */
+export const MAX_DURATION_MS = 6 * 60 * 60 * 1000
 
 export const eventDataSchemas = {
   qr_scan: z.object({ code: z.string().max(12), source: qrScanSourceSchema }),

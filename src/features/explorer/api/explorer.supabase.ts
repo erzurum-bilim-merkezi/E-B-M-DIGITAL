@@ -40,13 +40,22 @@ function nickname(value: string) {
   return formatNickname(cleanNickname(value))
 }
 
+/**
+ * Keeps the code of a member who just joined this device. A centre tablet seats one member at a
+ * time (the server has ended the other seats): the previous child's code must not stay behind.
+ */
+function rememberJoined(explorerId: string, code: string) {
+  if (centerDevice.get()) forgetAllCodes()
+  rememberCode(explorerId, code)
+}
+
 export function createSupabaseExplorerService(): ExplorerService {
   return {
     async register({ nickname: name, avatar }) {
       const result = withCodeSchema.parse(
         await call('register_explorer', { p_nickname: nickname(name), p_avatar: avatar }),
       )
-      rememberCode(result.explorer.id, result.restoreCode)
+      rememberJoined(result.explorer.id, result.restoreCode)
       return result
     },
 
@@ -56,7 +65,7 @@ export function createSupabaseExplorerService(): ExplorerService {
       const result = withCodeSchema.parse(
         unwrapResult(await call('restore_explorer', { p_code: code ?? input.slice(0, 32) })),
       )
-      rememberCode(result.explorer.id, result.restoreCode)
+      rememberJoined(result.explorer.id, result.restoreCode)
       return result
     },
 

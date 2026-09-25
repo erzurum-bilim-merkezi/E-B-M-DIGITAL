@@ -8,7 +8,7 @@ import {
 } from '@/entities/kit'
 import { appSettingsSchema, mediaAssetSchema, type MediaAsset } from '@/entities/studio'
 import { AppError } from '@/shared/api/errors'
-import { publicObjectUrl, staffClient, toAppError, unwrap } from '@/shared/api/supabase'
+import { mediaObjectUrl, staffClient, toAppError, unwrap } from '@/shared/api/supabase'
 
 import { AI_TIMEOUT_MS, composeKit, kitBlockTypes } from './compose'
 import type { AiQuota, AiService, AiStage, RunOptions } from './port'
@@ -222,7 +222,7 @@ export function createSupabaseAiService(): AiService {
       const { path, ...asset } = mediaRowSchema.parse(
         await invoke({ action: 'save-icon', svg, concept }),
       )
-      return { ...asset, url: publicObjectUrl('media', path) }
+      return { ...asset, url: mediaObjectUrl(asset.kind, path) }
     },
 
     async draftCardText(request, options) {

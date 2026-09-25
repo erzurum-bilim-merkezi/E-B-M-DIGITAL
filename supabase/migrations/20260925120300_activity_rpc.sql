@@ -9,26 +9,28 @@
 create function private.event_is_valid(p_event jsonb)
 returns boolean
 language plpgsql
-immutable
+stable
 set search_path = ''
 as $$
 declare
   v_type text := p_event ->> 'type';
   v_data jsonb := p_event -> 'data';
-  v_ts timestamptz;
-  v_uuid uuid;
 begin
-  if jsonb_typeof(p_event) <> 'object' or jsonb_typeof(v_data) <> 'object' then return false; end if;
+  -- "is distinct from": a missing field (NULL) must fail the check, not slip through it.
+  if jsonb_typeof(p_event) is distinct from 'object' or jsonb_typeof(v_data) is distinct from 'object' then
+    return false;
+  end if;
   if v_type is null or v_type not in ('qr_scan', 'kit_open', 'card_open', 'card_complete',
     'quiz_answer', 'kit_complete', 'badge_earned', 'certificate_view') then
     return false;
   end if;
-  if jsonb_typeof(p_event -> 'isPreview') <> 'boolean' then return false; end if;
+  if jsonb_typeof(p_event -> 'isPreview') is distinct from 'boolean' then return false; end if;
   begin
-    v_uuid := (p_event ->> 'clientEventId')::uuid;
-    v_uuid := (p_event ->> 'explorerId')::uuid;
-    if jsonb_typeof(p_event -> 'kitId') <> 'null' then v_uuid := (p_event ->> 'kitId')::uuid; end if;
-    v_ts := (p_event ->> 'occurredAt')::timestamptz;
+    perform (p_event ->> 'clientEventId')::uuid, (p_event ->> 'explorerId')::uuid,
+      (p_event ->> 'occurredAt')::timestamptz;
+    if jsonb_typeof(p_event -> 'kitId') is distinct from 'null' then
+      perform (p_event ->> 'kitId')::uuid;
+    end if;
   exception when others then
     return false;
   end;
@@ -36,7 +38,7 @@ begin
     or p_event ->> 'occurredAt' is null then
     return false;
   end if;
-  if jsonb_typeof(p_event -> 'stepId') not in ('null', 'string')
+  if coalesce(jsonb_typeof(p_event -> 'stepId'), '') not in ('null', 'string')
     or char_length(coalesce(p_event ->> 'stepId', '')) > 40 then
     return false;
   end if;
@@ -60,6 +62,26 @@ begin
     else true
   end;
 end;
+$$;
+
+-- What is stored of an event's data: only the validated fields of its type (never extra keys
+-- a client might send).
+create function private.event_data(p_type text, p_data jsonb)
+returns jsonb
+language sql
+immutable
+set search_path = ''
+as $$
+  select case p_type
+    when 'qr_scan' then jsonb_build_object('code', p_data -> 'code', 'source', p_data -> 'source')
+    when 'card_complete' then
+      jsonb_build_object('durationMs', p_data -> 'durationMs', 'attempts', p_data -> 'attempts')
+    when 'quiz_answer' then
+      jsonb_build_object('correct', p_data -> 'correct', 'optionId', p_data -> 'optionId')
+    when 'kit_complete' then jsonb_build_object('durationMs', p_data -> 'durationMs')
+    when 'badge_earned' then jsonb_build_object('badgeId', p_data -> 'badgeId')
+    else '{}'::jsonb
+  end
 $$;
 
 create function private.badge_json(p_badge public.explorer_badges)
@@ -108,7 +130,8 @@ begin
     perform private.raise('validation', 'Olay paketi geçersiz.');
   end if;
   v_count := jsonb_array_length(p_events);
-  if v_count < 1 or v_count > 50 then
+  -- 50 real events are a few kB; anything far larger is not the app talking.
+  if v_count < 1 or v_count > 50 or octet_length(p_events::text) > 65536 then
     perform private.raise('validation', 'Olay paketi geçersiz.');
   end if;
   for v_event in select value from jsonb_array_elements(p_events) loop
@@ -165,7 +188,7 @@ begin
       (client_event_id, explorer_id, kit_id, step_id, type, data, is_preview, occurred_at)
     values (
       (v_event ->> 'clientEventId')::uuid, v_explorer, v_kit, v_step, v_type,
-      v_event -> 'data', (v_event ->> 'isPreview')::boolean, v_at
+      private.event_data(v_type::text, v_event -> 'data'), (v_event ->> 'isPreview')::boolean, v_at
     );
     v_accepted := v_accepted + 1;
 

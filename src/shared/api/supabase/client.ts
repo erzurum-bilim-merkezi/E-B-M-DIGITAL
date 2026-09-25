@@ -9,8 +9,10 @@ import { env } from '@/shared/config/env'
  * Both are created on first use, so mock builds never construct one.
  */
 
-export const STAFF_AUTH_KEY = 'kasif:auth:staff'
-export const KIDS_AUTH_KEY = 'kasif:auth:kid'
+// Not the mock's kasif:auth:* keys: a device that ran a mock build keeps those values, and
+// supabase-js must never be handed one of them as a session.
+export const STAFF_AUTH_KEY = 'kasif:sb-auth:staff'
+export const KIDS_AUTH_KEY = 'kasif:sb-auth:kid'
 
 function config() {
   const url = env.VITE_SUPABASE_URL
@@ -50,10 +52,25 @@ export function kidsClient() {
   return kids
 }
 
-/** Public URL of an object in a public bucket (media files, published snapshots). */
-export function publicObjectUrl(bucket: 'media' | 'published', path: string) {
+export type PublicBucket = 'media' | 'ai' | 'published'
+
+/** Public URL of an object in a public bucket (media files, AI drawings, published snapshots). */
+export function publicObjectUrl(bucket: PublicBucket, path: string) {
   const encoded = path.split('/').map(encodeURIComponent).join('/')
   return `${config().url}/storage/v1/object/public/${bucket}/${encoded}`
+}
+
+/**
+ * The bucket of a media library file (ADR 0020): AI drawings (kind ai-scene / ai-icon) live in
+ * the `ai` bucket, written only by the ai-generate function; every upload lives in `media`.
+ */
+export function mediaBucket(kind: string): 'media' | 'ai' {
+  return kind === 'ai-scene' || kind === 'ai-icon' ? 'ai' : 'media'
+}
+
+/** Public URL of a media library file. */
+export function mediaObjectUrl(kind: string, path: string) {
+  return publicObjectUrl(mediaBucket(kind), path)
 }
 
 let deviceSession: Promise<string> | undefined

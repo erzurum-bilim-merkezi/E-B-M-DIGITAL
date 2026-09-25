@@ -279,6 +279,42 @@ describe('publishing', () => {
     )
   })
 
+  it('deletes a kit whose first publish was interrupted after the reservation', async () => {
+    const admin = await db().createStaff({ role: 'admin' })
+    const kit = await create(admin)
+    await db().as(admin).rpc('publish_reserve_version', {
+      p_kit: kit.id,
+      p_lock_version: kit.lockVersion,
+      p_document: kit.draft,
+      p_notes: '',
+      p_ai_review_confirmed: false,
+    })
+    await db().as(admin).rpc('kit_delete', { p_kit: kit.id })
+    expect(await db().sql('select * from public.kit_versions')).toEqual([])
+  })
+
+  it('keeps a draft saved during the publish as a draft', async () => {
+    const admin = await db().createStaff({ role: 'admin' })
+    const kit = await create(admin)
+    const holder = crypto.randomUUID()
+    await db().as(admin).rpc('publish_acquire_lease', { p_holder: holder })
+    const reserved = await db().as(admin).rpc<Version>('publish_reserve_version', {
+      p_kit: kit.id,
+      p_lock_version: kit.lockVersion,
+      p_document: kit.draft,
+      p_notes: '',
+      p_ai_review_confirmed: false,
+    })
+    // Another tab saves while the snapshot is being uploaded.
+    await save(admin, kit, { title: 'Yayın sırasında değişti' })
+    const { kit: after } = await db().as(admin).rpc<{ kit: Kit }>('publish_finalize', {
+      p_kit: kit.id,
+      p_version: reserved.version,
+      p_visibility: 'public',
+    })
+    expect(after).toMatchObject({ status: 'draft', publishedVersion: 1 })
+  })
+
   it('keeps published versions immutable', async () => {
     const admin = await db().createStaff({ role: 'admin' })
     const { version } = await publish(admin, await create(admin))

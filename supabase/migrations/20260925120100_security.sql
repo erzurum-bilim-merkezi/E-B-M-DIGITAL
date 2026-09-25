@@ -128,10 +128,10 @@ as $$
 $$;
 
 -- Raises unless the caller is active staff (optionally an admin); returns the user id.
+-- Volatile on purpose: a function that raises must never be evaluated early by the planner.
 create function private.require_staff(p_admin boolean default false)
 returns uuid
 language plpgsql
-stable
 security definer
 set search_path = ''
 as $$
@@ -155,7 +155,6 @@ $$;
 create function private.require_device()
 returns uuid
 language plpgsql
-stable
 set search_path = ''
 as $$
 begin
@@ -204,6 +203,16 @@ $$;
 -- Failures count for 15 minutes from the first one; the 5th locks the bucket for 15 minutes from
 -- that failure. Same rule as the mock backend.
 -- ---------------------------------------------------------------------------------------------
+
+-- Serialises the attempts of one subject (device, user) in one bucket for this transaction, so
+-- parallel guesses cannot race the failure counter.
+create function private.lock_attempts(p_bucket text, p_subject text)
+returns void
+language sql
+set search_path = ''
+as $$
+  select pg_advisory_xact_lock(hashtextextended(p_bucket || ':' || p_subject, 0))
+$$;
 
 create function private.attempt_locked(p_bucket text, p_subject text)
 returns boolean

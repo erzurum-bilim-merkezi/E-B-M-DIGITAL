@@ -75,7 +75,6 @@ $$;
 create function private.assert_editable(p_kit public.kits)
 returns void
 language plpgsql
-stable
 security definer
 set search_path = ''
 as $$
@@ -93,7 +92,6 @@ $$;
 create function private.assert_lock(p_kit public.kits, p_lock_version integer, p_message text)
 returns void
 language plpgsql
-stable
 set search_path = ''
 as $$
 begin
@@ -319,6 +317,8 @@ begin
     perform private.raise('conflict', 'Yayınlanmış kit silinemez; bunun yerine arşivleyin.');
   end if;
   perform private.reserve_prefix(v_kit.qr_prefix, p_kit);
+  -- A publish that was interrupted before finalizing leaves a reserved version: it goes too.
+  delete from public.kit_versions v where v.kit_id = p_kit and v.finalized_at is null;
   delete from public.kits k where k.id = p_kit;
   perform private.audit('kit.deleted', 'kit', p_kit::text,
     jsonb_build_object('title', v_kit.draft ->> 'title'), v_user);
@@ -647,15 +647,23 @@ begin
   where v.kit_id = p_kit and v.version = p_version
   returning * into v_version;
 
+  -- The working copy equals the published version only if nobody saved meanwhile; a newer draft
+  -- (or a review request made meanwhile) keeps its state.
   update public.kits k set
-    status = 'published',
+    status = case
+      when k.lock_version = v_version.source_lock_version then 'published'::public.kit_status
+      when k.status = 'published' then 'draft'::public.kit_status
+      else k.status
+    end,
     visibility = p_visibility,
     published_version = p_version,
     published_lock_version = v_version.source_lock_version,
     first_published_at = coalesce(k.first_published_at, now()),
     last_published_at = now(),
-    review_note = null,
-    reviewed_lock_version = null,
+    review_note = case when k.lock_version = v_version.source_lock_version then null else k.review_note end,
+    reviewed_lock_version = case
+      when k.lock_version = v_version.source_lock_version then null else k.reviewed_lock_version
+    end,
     updated_at = now()
   where k.id = p_kit
   returning * into v_kit;
@@ -755,6 +763,8 @@ set search_path = ''
 as $$
 begin
   if tg_op = 'DELETE' then
+    -- Only a reserved version that never went live may go (its kit is being deleted).
+    if old.finalized_at is null then return old; end if;
     raise exception 'kit_versions are immutable' using errcode = 'KS409';
   end if;
   if old.finalized_at is not null or new.kit_id <> old.kit_id or new.version <> old.version

@@ -208,28 +208,53 @@ function promptText(body: GenerationBody) {
 
 const USAGE_KIND = { 'card-text': 'text', kit: 'kit', scene: 'scene', icons: 'icon' } as const
 
+/**
+ * Reserves one generation in the database before the provider is called (ai_reserve counts
+ * in-flight generations too, under a lock), so parallel requests cannot exceed the quota together.
+ */
+async function reserveUsage(
+  context: Context,
+  kind: (typeof USAGE_KIND)[keyof typeof USAGE_KIND],
+  provider: Exclude<ProviderName, 'off'>,
+) {
+  const { data, error } = await context.admin.rpc('ai_reserve', {
+    p_user: context.userId,
+    p_kind: kind,
+    p_provider: provider,
+  })
+  if (error) {
+    if (error.code === 'KS430') {
+      throw new DetailedFailure(failures.quota(MESSAGES.quota), {
+        resetsAt: context.quota.resetsAt,
+      })
+    }
+    throw fromRpcError(error)
+  }
+  return String(data)
+}
+
+/** Completes the reserved ai_usage row (only 'ok' ones count towards the quota). */
 async function recordUsage(
   context: Context,
+  usageId: string,
   entry: {
-    kind: (typeof USAGE_KIND)[keyof typeof USAGE_KIND]
     status: 'ok' | 'blocked' | 'error'
-    provider: Exclude<ProviderName, 'off'>
     model: string
     inputTokens: number | null
     outputTokens: number | null
   },
 ) {
-  const { error } = await context.admin.from('ai_usage').insert({
-    user_id: context.userId,
-    kind: entry.kind,
-    status: entry.status,
-    provider: entry.provider,
-    model: entry.model.slice(0, 80),
-    input_tokens: entry.inputTokens,
-    output_tokens: entry.outputTokens,
-  })
+  const { error } = await context.admin
+    .from('ai_usage')
+    .update({
+      status: entry.status,
+      model: entry.model.slice(0, 80),
+      input_tokens: entry.inputTokens,
+      output_tokens: entry.outputTokens,
+    })
+    .eq('id', usageId)
   // The answer is not withheld for a lost counter row; the log says so (no prompt in it).
-  if (error) console.error(`ai_usage insert failed: ${error.code ?? ''}`)
+  if (error) console.error(`ai_usage update failed: ${error.code ?? ''}`)
 }
 
 function providerFor(name: Exclude<ProviderName, 'off'>): AiProvider {
@@ -363,14 +388,12 @@ async function generate(context: Context, body: GenerationBody) {
     throw new DetailedFailure(failures.quota(MESSAGES.quota), { resetsAt: quota.resetsAt })
   }
   const provider = providerFor(name)
-  const kind = USAGE_KIND[body.action]
+  const usageId = await reserveUsage(context, USAGE_KIND[body.action], name)
   const signal = AbortSignal.any([context.signal, AbortSignal.timeout(GEMINI_TIMEOUT_MS)])
   try {
     const { answer, results } = await run(provider, body, quota.suggestionCount, signal)
-    await recordUsage(context, {
-      kind,
+    await recordUsage(context, usageId, {
       status: 'ok',
-      provider: name,
       model: results[0]?.model ?? 'unknown',
       inputTokens: tokens(results, 'inputTokens'),
       outputTokens: tokens(results, 'outputTokens'),
@@ -378,10 +401,8 @@ async function generate(context: Context, body: GenerationBody) {
     return answer
   } catch (error) {
     const known = error instanceof AiProviderError ? failureOf(error, body.action) : null
-    await recordUsage(context, {
-      kind,
+    await recordUsage(context, usageId, {
       status: known?.status ?? 'error',
-      provider: name,
       model: error instanceof AiProviderError ? error.model : 'unknown',
       inputTokens: null,
       outputTokens: null,
@@ -390,9 +411,9 @@ async function generate(context: Context, body: GenerationBody) {
   }
 }
 
-/** Uploads SVGs to the media bucket; on any failure the uploaded ones are removed again. */
+/** Uploads SVGs to the ai bucket; on any failure the uploaded ones are removed again. */
 async function uploadSvgs(admin: SupabaseClient, files: { path: string; svg: string }[]) {
-  const bucket = admin.storage.from('media')
+  const bucket = admin.storage.from('ai')
   const settled = await Promise.all(
     files.map(async ({ path, svg: markup }) => {
       const { error } = await bucket
@@ -442,7 +463,7 @@ async function saveScene(
     width: 400,
     height: 260,
     alt: svgDescription(markup).slice(0, 240),
-    path: `ai/${sceneGroup}/${state}.svg`,
+    path: `scenes/${sceneGroup}/${state}.svg`,
     source: 'ai',
     scene_group: sceneGroup,
     scene_state: state,
@@ -475,7 +496,7 @@ async function saveScene(
 async function saveIcon(context: Context, markup: string, concept: string) {
   if (!isSafeIcon(markup)) throw failures.validation(MESSAGES.iconUnsafe)
   const id = crypto.randomUUID()
-  const path = `ai/icons/${id}.svg`
+  const path = `icons/${id}.svg`
   const undo = await uploadSvgs(context.admin, [{ path, svg: markup }])
   const { data, error } = await context.admin
     .from('media_assets')
@@ -535,6 +556,12 @@ Deno.serve(async (request) => {
       userId: user.data.user.id,
       quota: quotaSchema.parse(quota),
       signal: request.signal,
+    }
+
+    // Saving is part of the assistance: switched off, nothing new enters the library either.
+    const saving = body.data.action === 'save-scene' || body.data.action === 'save-icon'
+    if (saving && resolveProvider(Deno.env.get('AI_PROVIDER'), context.quota.provider) === 'off') {
+      throw failures.notFound(MESSAGES.off)
     }
 
     switch (body.data.action) {

@@ -111,17 +111,59 @@ set search_path = ''
 as $$
 declare
   v_user uuid := auth.uid();
+  v_profile public.profiles;
+  v_hash text;
 begin
-  if v_user is null or private.is_anonymous()
-    or not exists (select 1 from public.profiles p where p.id = v_user and p.active) then
+  select * into v_profile from public.profiles p
+  where p.id = v_user and p.active and not private.is_anonymous()
+  for update;
+  if v_profile.id is null then
     perform private.raise('unauthorized', 'Oturumunuz sona erdi. Lütfen yeniden giriş yapın.');
   end if;
-  update public.profiles p set must_change_password = false, temp_password_expires_at = null
+  if v_profile.must_change_password then
+    -- The server, not the browser, decides that a temporary password was really replaced.
+    if v_profile.temp_password_expires_at is null or v_profile.temp_password_expires_at <= now() then
+      perform private.raise('unauthorized',
+        'Geçici parolanın süresi doldu. Yöneticiden yeni parola isteyin.');
+    end if;
+    select u.encrypted_password into v_hash from auth.users u where u.id = v_user;
+    if v_hash is null or v_hash is not distinct from v_profile.temp_password_hash then
+      perform private.raise('validation', 'Önce yeni bir parola belirleyin.');
+    end if;
+  end if;
+  update public.profiles p set
+    must_change_password = false,
+    temp_password_expires_at = null,
+    temp_password_hash = null
   where p.id = v_user;
   perform private.clear_failures('current-password', v_user::text);
   perform private.audit('auth.password_changed', 'staff_user', v_user::text);
   return private.staff_json(v_user);
 end;
+$$;
+
+-- Ends every session of a user (password reset, deactivation): refresh tokens go with them.
+create function private.end_sessions(p_user uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  delete from auth.sessions s where s.user_id = p_user
+$$;
+
+-- The temporary password just set on the account (its hash, and 72 h to change it).
+create function private.mark_temporary_password(p_user uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  update public.profiles p set
+    must_change_password = true,
+    temp_password_expires_at = now() + interval '72 hours',
+    temp_password_hash = (select u.encrypted_password from auth.users u where u.id = p_user)
+  where p.id = p_user
 $$;
 
 -- Never leaves the Studio without an active admin (row lock: two admins demoting each other
@@ -158,6 +200,45 @@ begin
 end;
 $$;
 
+-- First admin of a fresh project (scripts/bootstrap-admin.mjs, service role only): refuses when
+-- any admin exists.
+create function public.staff_bootstrap_admin(p_user uuid, p_email text, p_display_name text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended('kasif:bootstrap-admin', 0));
+  if exists (select 1 from public.profiles p where p.role = 'admin') then
+    perform private.raise('conflict', 'Bir yönetici zaten var. Diğer yöneticileri Studio’dan ekleyin.');
+  end if;
+  if char_length(btrim(coalesce(p_display_name, ''))) not between 2 and 60 then
+    perform private.raise('validation', 'Ad 2–60 karakter olmalı.');
+  end if;
+  insert into public.profiles (id, email, display_name, role)
+  values (p_user, lower(btrim(p_email)), btrim(p_display_name), 'admin');
+  perform private.mark_temporary_password(p_user);
+  perform private.audit('user.bootstrap_admin', 'staff_user', p_user::text, '{}', null);
+  return private.staff_json(p_user);
+end;
+$$;
+
+-- Ends every session of an account (emergency 2FA reset; service role only).
+create function public.staff_end_sessions(p_user uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  select private.end_sessions(p_user)
+$$;
+
+revoke execute on function public.staff_bootstrap_admin(uuid, text, text) from public, anon, authenticated;
+revoke execute on function public.staff_end_sessions(uuid) from public, anon, authenticated;
+grant execute on function public.staff_bootstrap_admin(uuid, text, text) to service_role;
+grant execute on function public.staff_end_sessions(uuid) to service_role;
+
 -- Called by admin-users after auth.admin.createUser (temporary password, 72 h).
 create function public.staff_register(
   p_user uuid,
@@ -176,10 +257,10 @@ begin
   if char_length(btrim(coalesce(p_display_name, ''))) not between 2 and 60 then
     perform private.raise('validation', 'Ad 2–60 karakter olmalı.');
   end if;
-  insert into public.profiles
-    (id, email, display_name, role, must_change_password, temp_password_expires_at)
-  values (p_user, lower(btrim(p_email)), btrim(p_display_name), p_role, true,
-    now() + interval '72 hours');
+  insert into public.profiles (id, email, display_name, role)
+  values (p_user, lower(btrim(p_email)), btrim(p_display_name), p_role);
+  -- admin-users created the auth user with the temporary password just before.
+  perform private.mark_temporary_password(p_user);
   perform private.audit('user.created', 'staff_user', p_user::text,
     jsonb_build_object('role', p_role), v_admin);
   return private.staff_json(p_user);
@@ -197,11 +278,12 @@ as $$
 declare
   v_admin uuid := private.require_staff(true);
 begin
-  update public.profiles p set
-    must_change_password = true,
-    temp_password_expires_at = now() + interval '72 hours'
-  where p.id = p_user;
-  if not found then perform private.raise('not_found', 'Kullanıcı bulunamadı.'); end if;
+  if not exists (select 1 from public.profiles p where p.id = p_user) then
+    perform private.raise('not_found', 'Kullanıcı bulunamadı.');
+  end if;
+  -- admin-users set the new temporary password just before; old sessions must not live on.
+  perform private.mark_temporary_password(p_user);
+  perform private.end_sessions(p_user);
   perform private.audit('user.password_reset', 'staff_user', p_user::text, '{}', v_admin);
   return private.staff_json(p_user);
 end;
@@ -233,6 +315,9 @@ begin
   if p_role is not null and p_role <> v_profile.role then
     perform private.audit('user.role_changed', 'staff_user', p_user::text,
       jsonb_build_object('role', p_role), v_admin);
+  end if;
+  if p_active is false then
+    perform private.end_sessions(p_user);
   end if;
   if p_active is not null and p_active <> v_profile.active then
     perform private.audit(case when p_active then 'user.activated' else 'user.deactivated' end,
@@ -462,7 +547,7 @@ begin
   end if;
   v_limit := case p_kind
     when 'image' then 300000
-    when 'icon' then 150000
+    when 'icon' then 200000
     when 'audio' then 1048576
     else 102400
   end;
@@ -538,10 +623,10 @@ begin
 end;
 $$;
 
--- Deletes the record of an unused asset and returns its object path; the Studio then removes
--- the file from Storage (admins may delete in the media bucket).
+-- Deletes the record of an unused asset and returns where its file is ({ bucket, path }); the
+-- Studio then removes the file (admins may delete in the media and ai buckets).
 create function public.media_delete(p_id uuid)
-returns text
+returns jsonb
 language plpgsql
 security definer
 set search_path = ''
@@ -560,7 +645,10 @@ begin
   delete from public.media_assets m where m.id = p_id;
   perform private.audit('media.deleted', 'media', p_id::text,
     jsonb_build_object('name', v_asset.name), v_admin);
-  return v_asset.path;
+  return jsonb_build_object(
+    'bucket', case when v_asset.kind in ('ai-scene', 'ai-icon') then 'ai' else 'media' end,
+    'path', v_asset.path
+  );
 end;
 $$;
 
@@ -593,7 +681,7 @@ begin
   return jsonb_build_object(
     'storageBytes', (
       select coalesce(sum((o.metadata ->> 'size')::bigint), 0) from storage.objects o
-      where o.bucket_id in ('media', 'published')
+      where o.bucket_id in ('media', 'ai', 'published')
     ),
     'storageLimitBytes', 1073741824,
     'databaseBytes', pg_database_size(current_database()),
@@ -603,6 +691,58 @@ begin
   );
 end;
 $$;
+
+-- ---------------------------------------------------------------------------------------------
+-- Account changes made straight through Supabase Auth are recorded too: a signed-in session could
+-- change its password or add an authenticator without the Studio's own checks (audit trail for
+-- the admins; the Studio itself always goes through its checked flows).
+-- ---------------------------------------------------------------------------------------------
+
+create function private.audit_password_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.encrypted_password is distinct from old.encrypted_password
+    and exists (select 1 from public.profiles p where p.id = new.id) then
+    perform private.audit('auth.password_set', 'staff_user', new.id::text, '{}', new.id);
+  end if;
+  return new;
+end;
+$$;
+
+create trigger kasif_audit_password
+  after update of encrypted_password on auth.users
+  for each row execute function private.audit_password_change();
+
+create function private.audit_mfa_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := coalesce(new.user_id, old.user_id);
+begin
+  if exists (select 1 from public.profiles p where p.id = v_user) then
+    perform private.audit(
+      case
+        when tg_op = 'INSERT' then 'auth.mfa_factor_added'
+        when tg_op = 'DELETE' then 'auth.mfa_factor_removed'
+        else 'auth.mfa_factor_' || new.status::text
+      end,
+      'staff_user', v_user::text, '{}', v_user
+    );
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+create trigger kasif_audit_mfa
+  after insert or delete or update of status on auth.mfa_factors
+  for each row execute function private.audit_mfa_change();
 
 grant execute on function
   public.my_staff_profile(),

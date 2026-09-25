@@ -24,12 +24,20 @@ jobs:
     timeout-minutes: 10
     environment: production
     steps:
+      # The inputs are personal data and this repository's logs are public: mask them before any
+      # step shows them. Read from the event file, so this step's own log holds neither.
+      - name: Mask the inputs
+        run: >-
+          node -e 'const { email = "", name = "" } = require(process.env.GITHUB_EVENT_PATH).inputs;
+          for (const value of new Set([email, email.trim(), email.trim().toLowerCase(), name, name.trim()]))
+          if (value) console.log(`::add-mask::${value}`)'
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      # No install scripts: a dependency never runs code next to the production secrets.
+      - run: npm ci --ignore-scripts
       - name: Create the first admin
         run: node scripts/bootstrap-admin.mjs
         env:

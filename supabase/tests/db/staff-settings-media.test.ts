@@ -22,6 +22,14 @@ async function uploaded(id: string, ext: string, size: number, mimetype: string)
   )
 }
 
+/** An editor whose admin just set a temporary password. */
+async function withTemporaryPassword() {
+  const editor = await db().createStaff({ role: 'editor' })
+  await setPassword(editor, 'Gecici-AAAA-BBBB7')
+  await db().sql('select private.mark_temporary_password($1)', [editor.id])
+  return editor
+}
+
 describe('Studio accounts', () => {
   it('describes the signed-in user, including an expired temporary password', async () => {
     const editor = await db().createStaff({ role: 'editor', mustChangePassword: true })
@@ -84,10 +92,71 @@ describe('Studio accounts', () => {
     expect(right.error?.code).toBe('rate_limited')
   })
 
-  it('clears the change-password flag after a password change', async () => {
-    const editor = await db().createStaff({ role: 'editor', mustChangePassword: true })
-    const profile = await db().as(editor).rpc<Staff>('complete_password_change')
-    expect(profile.mustChangePassword).toBe(false)
+  describe('temporary passwords (enforced by the server, not the browser)', () => {
+    it('keeps the flag until the password really changed', async () => {
+      const editor = await withTemporaryPassword()
+      const unchanged = await dbError(db().as(editor).rpc('complete_password_change'))
+      expect(unchanged.code).toBe(KS.validation)
+
+      await setPassword(editor, 'Yepyeni.Parola.42')
+      const profile = await db().as(editor).rpc<Staff>('complete_password_change')
+      expect(profile.mustChangePassword).toBe(false)
+    })
+
+    it('refuses an expired temporary password even after a change', async () => {
+      const editor = await withTemporaryPassword()
+      await db().sql(
+        `update public.profiles set temp_password_expires_at = now() - interval '1 minute' where id = $1`,
+        [editor.id],
+      )
+      await setPassword(editor, 'Yepyeni.Parola.42')
+      const error = await dbError(db().as(editor).rpc('complete_password_change'))
+      expect(error.code).toBe(KS.unauthorized)
+    })
+
+    it('ends the sessions of a reset or deactivated account', async () => {
+      const admin = await db().createStaff({ role: 'admin' })
+      const editor = await db().createStaff({ role: 'editor' })
+      const sessions = () =>
+        db().sql('select id from auth.sessions where user_id = $1', [editor.id])
+      await db().sql('insert into auth.sessions (user_id) values ($1)', [editor.id])
+      await db().as(admin).rpc('staff_mark_password_reset', { p_user: editor.id })
+      expect(await sessions()).toEqual([])
+
+      await db().sql('insert into auth.sessions (user_id) values ($1)', [editor.id])
+      await db().as(admin).rpc('staff_update', { p_user: editor.id, p_active: false })
+      expect(await sessions()).toEqual([])
+    })
+
+    it('creates the first admin only on an empty project (service role only)', async () => {
+      const id = await db().createUser({ email: 'ilk@kasif.test' })
+      const service = { kind: 'service' } as const
+      const first = await db().as(service).rpc<Staff>('staff_bootstrap_admin', {
+        p_user: id,
+        p_email: 'ilk@kasif.test',
+        p_display_name: 'İlk Yönetici',
+      })
+      expect(first).toMatchObject({ role: 'admin', mustChangePassword: true })
+
+      const second = await db().createUser({ email: 'ikinci@kasif.test' })
+      const refused = await dbError(
+        db().as(service).rpc('staff_bootstrap_admin', {
+          p_user: second,
+          p_email: 'ikinci@kasif.test',
+          p_display_name: 'İkinci',
+        }),
+      )
+      expect(refused.code).toBe(KS.conflict)
+      const editor = await db().createStaff({ role: 'editor' })
+      const denied = await dbError(
+        db().as(editor).rpc('staff_bootstrap_admin', {
+          p_user: second,
+          p_email: 'x@kasif.test',
+          p_display_name: 'Xx',
+        }),
+      )
+      expect(denied.code).toBe('42501')
+    })
   })
 
   it('never leaves the Studio without an active admin', async () => {
@@ -269,7 +338,10 @@ describe('media library', () => {
     expect((await dbError(db().as(editor).rpc('media_delete', { p_id: id }))).code).toBe(
       KS.forbidden,
     )
-    expect(await db().as(admin).rpc('media_delete', { p_id: id })).toBe(`uploads/${id}.png`)
+    expect(await db().as(admin).rpc('media_delete', { p_id: id })).toEqual({
+      bucket: 'media',
+      path: `uploads/${id}.png`,
+    })
   })
 
   it('reports the Free-plan gauges to staff', async () => {
@@ -322,6 +394,39 @@ describe('storage policies', () => {
     expect(await removed(editor)).toEqual([{ name: 'uploads/o.png' }])
   })
 
+  it('never lets the uploader delete a registered file', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const id = crypto.randomUUID()
+    await db().sql(
+      `insert into storage.objects (bucket_id, name, owner, metadata) values ('media', $1, $2, $3)`,
+      [`uploads/${id}.png`, editor.id, JSON.stringify({ size: 1000, mimetype: 'image/png' })],
+    )
+    await db().as(editor).rpc('media_register', {
+      p_id: id,
+      p_kind: 'image',
+      p_name: 'a.png',
+      p_mime: 'image/png',
+      p_alt: 'bir görsel',
+    })
+    const removed = await db()
+      .as(editor)
+      .sql('delete from storage.objects where name = $1 returning name', [`uploads/${id}.png`])
+    expect(removed).toEqual([])
+  })
+
+  it('never lets staff store an SVG of their own', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const admin = await db().createStaff({ role: 'admin' })
+    for (const actor of [editor, admin]) {
+      const error = await dbError(insertObject(actor, 'ai', 'scenes/x/static.svg'))
+      expect(error.code).toBe('42501')
+    }
+    const [bucket] = await db().sql<{ allowed_mime_types: string[] }>(
+      "select allowed_mime_types from storage.buckets where id = 'media'",
+    )
+    expect(bucket?.allowed_mime_types).not.toContain('image/svg+xml')
+  })
+
   it('lets only admins delete media files', async () => {
     const editor = await db().createStaff({ role: 'editor' })
     const admin = await db().createStaff({ role: 'admin' })
@@ -364,5 +469,27 @@ describe('retention job', () => {
   it('is scheduled daily', async () => {
     const jobs = await db().sql<{ jobname: string }>(`select jobname from cron.job`)
     expect(jobs.map((job) => job.jobname)).toContain('kasif-daily-cleanup')
+  })
+})
+
+describe('changes made straight through Supabase Auth', () => {
+  it('records password changes and authenticator changes of Studio accounts', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    await setPassword(editor, 'Baska.Parola.99')
+    await db().sql(
+      `insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
+       values (gen_random_uuid(), $1, 'Yeni', 'totp', 'unverified', now(), now())`,
+      [editor.id],
+    )
+    await db().sql(`update auth.mfa_factors set status = 'verified' where user_id = $1`, [
+      editor.id,
+    ])
+    const actions = await db().sql<{ action: string }>(
+      'select action from public.audit_log where entity_id = $1 order by at, action',
+      [editor.id],
+    )
+    expect(actions.map((row) => row.action).toSorted()).toEqual(
+      ['auth.mfa_factor_added', 'auth.mfa_factor_verified', 'auth.password_set'].toSorted(),
+    )
   })
 })

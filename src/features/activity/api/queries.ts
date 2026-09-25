@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef } from 'react'
 
-import type { ActivityEvent } from '@/entities/activity'
+import { MAX_DURATION_MS, type ActivityEvent } from '@/entities/activity'
 import { mergeProgress, type EarnedBadge, type ExplorerProgress } from '@/entities/explorer'
 import { isKitComplete, kitProgressRatio, type KitDocument } from '@/entities/kit'
 import { KIDS_QUERY_ROOT } from '@/shared/api/query-keys'
@@ -116,7 +116,9 @@ export function useKitCompletion(
   const summary = kitProgressSummary(kit, row)
   const reported = useRef(false)
   const completedAt = row?.completedAt ?? null
-  const durationMs = row?.totalDurationMs ?? 0
+  // The sum of the card times; a kit played over days is reported at the event's own cap (the
+  // server rejects an event beyond it, and the completion would never be recorded).
+  const durationMs = Math.min(Math.round(row?.totalDurationMs ?? 0), MAX_DURATION_MS)
 
   useEffect(() => {
     if (!explorerId || isPending || !summary.done || completedAt || reported.current) return

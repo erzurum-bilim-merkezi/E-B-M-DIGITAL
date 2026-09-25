@@ -73,9 +73,10 @@ async function openPglite(): Promise<{ query: Query; close: () => Promise<void> 
 }
 
 async function openPostgres(url: string): Promise<{ query: Query; close: () => Promise<void> }> {
-  const host = new URL(url).hostname
-  if (host !== '127.0.0.1' && host !== 'localhost') {
-    throw new Error(`Database tests run on the local stack only (got ${host}).`)
+  const parsed = new URL(url)
+  // No query parameters: pg reads ?host= (and friends) over the URL's own host.
+  if (!['127.0.0.1', 'localhost'].includes(parsed.hostname) || parsed.search !== '') {
+    throw new Error(`Database tests run on the local stack only (got ${parsed.host}).`)
   }
   // oxlint-disable-next-line import/no-named-as-default-member -- pg is CommonJS: Client lives on the default export
   const client = new pg.Client({ connectionString: url })

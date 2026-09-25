@@ -90,6 +90,10 @@ export function toAppError(error: unknown): AppError {
 
   // Auth (GoTrue) errors.
   if (field(error, '__isAuthError') === true || field(error, 'name') === 'AuthApiError') {
+    // A deactivated Studio account is banned in Supabase Auth.
+    if (code === 'user_banned') {
+      return new AppError('forbidden', 'Hesabınız pasif. Bir yöneticiyle iletişime geçin.')
+    }
     if (code === 'invalid_credentials' || status === 400) {
       return new AppError('unauthorized', 'E-posta ya da parola hatalı.')
     }
@@ -107,6 +111,21 @@ export function toAppError(error: unknown): AppError {
   if (status === 429) return new AppError('rate_limited')
   if (isNetworkError(error)) return new AppError('network')
   return new AppError('unavailable')
+}
+
+/** A Storage upload refused because the object exists (upsert: false). */
+export function isAlreadyExists(error: unknown) {
+  if (typeof error !== 'object' || error === null) return false
+  return (
+    Number(field(error, 'status')) === 409 ||
+    String(field(error, 'statusCode')) === '409' ||
+    /already exists|duplicate/i.test(String(field(error, 'message') ?? ''))
+  )
+}
+
+/** PostgREST's answer to a range past the last row (a page that no longer exists). */
+export function isRangeNotSatisfiable(error: unknown) {
+  return typeof error === 'object' && error !== null && field(error, 'code') === 'PGRST103'
 }
 
 /** `{ data, error }` of supabase-js → data, or the mapped AppError. */

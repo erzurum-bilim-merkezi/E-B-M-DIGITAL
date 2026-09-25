@@ -4,9 +4,13 @@ export {
   ensureDeviceSession,
   KIDS_AUTH_KEY,
   kidsClient,
+  mediaBucket,
+  mediaObjectUrl,
   publicObjectUrl,
   resetSupabaseClients,
   STAFF_AUTH_KEY,
   staffClient,
+  type PublicBucket,
 } from './client'
-export { toAppError, unwrap, unwrapResult } from './errors'
+export { isAlreadyExists, isRangeNotSatisfiable, toAppError, unwrap, unwrapResult } from './errors'
+export { readAll } from './read-all'

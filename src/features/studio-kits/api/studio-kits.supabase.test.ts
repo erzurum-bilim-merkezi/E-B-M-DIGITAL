@@ -134,7 +134,29 @@ describe('Supabase kit repository', () => {
     expect(query?.get('or')).toBe(
       '(draft->>title.ilike.*çift*,slug.ilike.*çift*,qr_prefix.eq.ÇIFT)',
     )
-    expect(query?.get('order')).toBe('updated_at.desc')
+    expect(query?.get('order')).toBe('updated_at.desc,id.asc')
+  })
+
+  it('goes to the last page when the asked one no longer exists', async () => {
+    const offsets: (string | null)[] = []
+    server.use(
+      http.get(`${SUPABASE_URL}/rest/v1/kits`, ({ request }) => {
+        const offset = new URL(request.url).searchParams.get('offset')
+        offsets.push(offset)
+        return Number(offset ?? 0) >= 12
+          ? HttpResponse.json(
+              { code: 'PGRST103', message: 'Requested range not satisfiable', details: null },
+              { status: 416, headers: { 'Content-Range': '*/12' } },
+            )
+          : HttpResponse.json([kitRow()], {
+              headers: { 'Content-Range': `${offset ?? 0}-${Number(offset ?? 0)}/12` },
+            })
+      }),
+    )
+    const page = await kits.list({ status: 'all', query: '', page: 3, pageSize: 10 })
+
+    expect(page).toMatchObject({ total: 12, page: 2, pageCount: 2 })
+    expect(offsets).toEqual(['20', '0', '10'])
   })
 
   it('duplicates a kit with a free address and prefix', async () => {
@@ -206,6 +228,75 @@ describe('Supabase publishing saga', () => {
     expect(byPath.has('kits/kucuk-ciftciler/latest.json')).toBe(true)
   })
 
+  it('reports a refused snapshot write instead of comparing contents', async () => {
+    rpc('publish_acquire_lease', () => true)
+    const released = rpc('publish_release_lease', () => null)
+    table('kits', [kitRow()])
+    rpc('publish_reserve_version', () => version(1, false))
+    const finalize = rpc('publish_finalize', () => null)
+    server.use(
+      http.post(/\/storage\/v1\/object\/published\//, () =>
+        HttpResponse.json(
+          { statusCode: '403', error: 'Unauthorized', message: 'row-level security' },
+          { status: 400 },
+        ),
+      ),
+    )
+
+    const error = await failure(
+      publishing.publish(KIT_ID, {
+        notes: '',
+        visibility: 'public',
+        lockVersion: 4,
+        aiReviewConfirmed: false,
+      }),
+    )
+
+    // No download of the existing file (MSW fails unhandled requests), no finalize.
+    expect(isAppError(error, 'unavailable')).toBe(true)
+    expect(finalize).toEqual([])
+    expect(released).toHaveLength(1)
+  })
+
+  it.each([
+    ['an identical file from an interrupted run counts as written', 'same', null],
+    ['a file with other content is a conflict', 'other', 'conflict'],
+    ['a file that cannot be read back is a retryable failure', 'unreadable', 'unavailable'],
+  ] as const)('publishing over an existing snapshot: %s', async (_, existing, code) => {
+    rpc('publish_acquire_lease', () => true)
+    rpc('publish_release_lease', () => null)
+    table('kits', [kitRow()])
+    rpc('publish_reserve_version', () => version(1, false))
+    // Answers with nothing a finished publish needs: reaching it is what this test checks.
+    const finalize = rpc('publish_finalize', () => null)
+    const path = `${SUPABASE_URL}/storage/v1/object/published/kits/kucuk-ciftciler/v1.json`
+    server.use(
+      http.post(path, () =>
+        HttpResponse.json(
+          { statusCode: '409', error: 'Duplicate', message: 'The resource already exists' },
+          { status: 400 },
+        ),
+      ),
+      http.get(path, () =>
+        existing === 'unreadable'
+          ? HttpResponse.json({ statusCode: '500', message: 'boom' }, { status: 500 })
+          : HttpResponse.json(existing === 'same' ? version(1, false).document : { other: true }),
+      ),
+    )
+
+    const error = await failure(
+      publishing.publish(KIT_ID, {
+        notes: '',
+        visibility: 'public',
+        lockVersion: 4,
+        aiReviewConfirmed: false,
+      }),
+    )
+
+    expect(finalize).toHaveLength(code ? 0 : 1)
+    expect(code === null || isAppError(error, code)).toBe(true)
+  })
+
   it('waits for another publish instead of racing it', async () => {
     rpc('publish_acquire_lease', () => false)
     const error = await failure(
@@ -253,6 +344,51 @@ describe('Supabase publishing saga', () => {
     expect(isAppError(error, 'conflict') && error.details['latest']).toMatchObject({
       lockVersion: 9,
     })
+  })
+})
+
+/** The rebuild after an archive or unarchive: storage writes and removals. */
+function publishedIndexes(kit: StudioKit) {
+  rpc('publish_acquire_lease', () => true)
+  rpc('publish_release_lease', () => null)
+  rpc('publish_generation', () => 7)
+  table('kits', [kit])
+  table('kit_versions', [version(1, true)])
+  table('qr_codes', [])
+  const removed: unknown[] = []
+  server.use(
+    http.delete(`${SUPABASE_URL}/storage/v1/object/published`, async ({ request }) => {
+      removed.push(await request.json())
+      return HttpResponse.json([])
+    }),
+  )
+  return { uploads: publishedBucket(), removed }
+}
+
+describe('Supabase index regeneration', () => {
+  it('takes an archived kit off its address', async () => {
+    const archived = kitRow({ status: 'archived', publishedVersion: 1 })
+    rpc('kit_archive', () => archived)
+    const { uploads, removed } = publishedIndexes(archived)
+
+    await publishing.archive(KIT_ID)
+
+    expect(removed).toEqual([{ prefixes: ['kits/kucuk-ciftciler/latest.json'] }])
+    expect(uploads.map((upload) => upload.path).toSorted()).toEqual([
+      'catalog.json',
+      'qr-index.json',
+    ])
+  })
+
+  it('points a restored kit to its latest version again', async () => {
+    const back = kitRow({ status: 'published', publishedVersion: 1 })
+    rpc('kit_unarchive', () => back)
+    const { uploads, removed } = publishedIndexes(back)
+
+    await publishing.unarchive(KIT_ID)
+
+    expect(removed).toEqual([])
+    expect(uploads.map((upload) => upload.path)).toContain('kits/kucuk-ciftciler/latest.json')
   })
 })
 

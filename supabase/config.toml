@@ -219,8 +219,10 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
-enable_signup = false
+# The Email provider itself: turning it off also turns off e-mail + password sign-in (Studio).
+# Self sign-up cannot be closed apart from anonymous sign-ins (ADR 0021): a stranger's account
+# sees nothing (RLS), and Studio accounts are created only through admin-users.
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -298,7 +300,7 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 # Multi-factor-authentication is available to Supabase Pro plan.
 [auth.mfa]
 # Control how many MFA factors can be enrolled at once per user.
-max_enrolled_factors = 10
+max_enrolled_factors = 2
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]

@@ -48,24 +48,16 @@ if (created.error || !created.data.user) {
   process.exit(1)
 }
 const id = created.data.user.id
-const profile = await admin.from('profiles').insert({
-  id,
-  email,
-  display_name: name,
-  role: 'admin',
-  must_change_password: true,
-  temp_password_expires_at: new Date(Date.now() + 72 * 3600_000).toISOString(),
+// staff_bootstrap_admin re-checks "no admin yet" under a lock, marks the temporary password
+// (72 h, must change) and writes the audit entry.
+const profile = await admin.rpc('staff_bootstrap_admin', {
+  p_user: id,
+  p_email: email,
+  p_display_name: name,
 })
 if (profile.error) {
   await admin.auth.admin.deleteUser(id)
   console.error(`Could not create the profile: ${profile.error.message}`)
   process.exit(1)
 }
-await admin.from('audit_log').insert({
-  actor_id: null,
-  action: 'user.bootstrap_admin',
-  entity: 'staff_user',
-  entity_id: id,
-  meta: {},
-})
 console.warn(`✔ First admin created for ${email}. Sign in, change the password, enrol TOTP.`)

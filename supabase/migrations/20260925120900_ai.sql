@@ -56,6 +56,49 @@ begin
 end;
 $$;
 
+-- Reserves one generation before the provider is called (ai-generate, service role): under a
+-- lock, today's successful and in-flight generations are counted against the limits, so parallel
+-- requests cannot exceed them together. Returns the ai_usage row the function completes later.
+-- A reservation older than 5 minutes (a crashed function) no longer counts.
+create function public.ai_reserve(p_user uuid, p_kind text, p_provider text)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_settings jsonb;
+  v_today date := (now() at time zone 'Europe/Istanbul')::date;
+  v_start timestamptz := v_today::timestamp at time zone 'Europe/Istanbul';
+  v_end timestamptz := (v_today + 1)::timestamp at time zone 'Europe/Istanbul';
+  v_user_used integer;
+  v_project_used integer;
+  v_id uuid;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('kasif:ai-quota', 0));
+  select s.value into v_settings from public.app_settings s where s.id = 1;
+  select count(*) filter (where a.user_id = p_user), count(*)
+  into v_user_used, v_project_used
+  from public.ai_usage a
+  where a.created_at >= v_start and a.created_at < v_end
+    and (a.status = 'ok' or (a.status = 'pending' and a.created_at > now() - interval '5 minutes'));
+  if v_user_used >= coalesce((v_settings ->> 'aiDailyUserLimit')::integer, 0)
+    or v_project_used >= coalesce((v_settings ->> 'aiDailyProjectLimit')::integer, 0) then
+    perform private.raise('quota',
+      'Bugünkü ücretsiz yapay zekâ kotası doldu. Kota gece 00:00’da (İstanbul) yenilenir.',
+      jsonb_build_object(
+        'resetsAt', to_char(v_end at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      ));
+  end if;
+  insert into public.ai_usage (user_id, kind, status, provider, model)
+  values (p_user, p_kind, 'pending', p_provider, 'pending')
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+revoke all on function public.ai_reserve(uuid, text, text) from public, anon, authenticated;
+grant execute on function public.ai_reserve(uuid, text, text) to service_role;
 revoke all on function public.ai_quota_for(uuid) from public, anon, authenticated;
 grant execute on function public.ai_quota_for(uuid) to service_role;
 grant execute on function public.ai_quota() to authenticated;

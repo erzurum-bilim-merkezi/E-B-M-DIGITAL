@@ -16,10 +16,163 @@ export type SvgProblem =
   | 'css-import'
   | 'missing-title'
   | 'missing-desc'
+  | 'markup-declaration'
+  | 'element'
+  | 'attribute'
+  | 'css'
+
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+
+/** Drawing elements only: no scripts, links, images, embedded documents, filters or animation. */
+const ALLOWED_ELEMENTS = new Set([
+  'svg',
+  'title',
+  'desc',
+  'g',
+  'defs',
+  'rect',
+  'circle',
+  'ellipse',
+  'line',
+  'polyline',
+  'polygon',
+  'path',
+  'text',
+  'tspan',
+  'linearGradient',
+  'radialGradient',
+  'stop',
+  'style',
+])
+
+/** Geometry and presentation attributes; no href, no event handlers, no namespaced names. */
+const ALLOWED_ATTRIBUTES = new Set([
+  'xmlns',
+  'viewBox',
+  'preserveAspectRatio',
+  'width',
+  'height',
+  'x',
+  'y',
+  'x1',
+  'y1',
+  'x2',
+  'y2',
+  'cx',
+  'cy',
+  'r',
+  'rx',
+  'ry',
+  'fx',
+  'fy',
+  'dx',
+  'dy',
+  'd',
+  'points',
+  'transform',
+  'id',
+  'class',
+  'role',
+  'lang',
+  'aria-hidden',
+  'aria-label',
+  'fill',
+  'fill-opacity',
+  'fill-rule',
+  'clip-rule',
+  'stroke',
+  'stroke-width',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'stroke-dasharray',
+  'stroke-dashoffset',
+  'stroke-miterlimit',
+  'stroke-opacity',
+  'opacity',
+  'display',
+  'visibility',
+  'paint-order',
+  'vector-effect',
+  'font-size',
+  'font-weight',
+  'font-family',
+  'font-style',
+  'text-anchor',
+  'dominant-baseline',
+  'letter-spacing',
+  'text-decoration',
+  'offset',
+  'stop-color',
+  'stop-opacity',
+  'gradientUnits',
+  'gradientTransform',
+])
+
+/** A start or end tag: its name and the raw attribute text. */
+const TAG = /<(\/?)([^\s/>]*)([^>]*)>/g
+/**
+ * Attribute text of a well-formed tag: name="value" pairs. Values carry no `<`, `>`, `&` or `\`:
+ * no character references and no CSS escapes (`fill="\75rl(…)"` is a URL to Chromium).
+ */
+const ATTRIBUTES = /^(?:\s+[A-Za-z][\w:.-]*\s*=\s*(?:"[^"<>&\\]*"|'[^'<>&\\]*'))*\s*\/?$/
+const ATTRIBUTE = /([A-Za-z][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
+/** <style> element with its whole content, child elements included (the browser joins the text). */
+const STYLE_ELEMENT = /<style\b[^>]*>([\s\S]*?)<\/style\s*>/g
 
 /**
- * Strict allow-list check of generated SVG. The server also rebuilds the markup; this is the
- * contract both sides test against. Anything outside it is rejected, never "fixed".
+ * CSS of <style> and style="": animations only. No escapes, strings or entities, no at-rules but
+ * these two, and no function that loads a file (url, image-set, image, cross-fade, element, src).
+ */
+function unsafeCss(css: string) {
+  if (/[\\<&"']/.test(css)) return true
+  for (const match of css.matchAll(/@([\w-]+)/g)) {
+    if (match[1] !== 'keyframes' && match[1] !== 'media') return true
+  }
+  return (
+    /url\(\s*(?!#)/i.test(css) ||
+    /image-set|cross-fade|\b(?:image|element|src)\s*\(/i.test(css) ||
+    /expression\s*\(|behavior\s*:|-moz-binding/i.test(css)
+  )
+}
+
+/** Element and attribute allow-list of the markup; returns the problems it finds. */
+function checkMarkup(svg: string) {
+  const problems = new Set<SvgProblem>()
+  // Declarations, CDATA, comments and processing instructions: nothing but plain elements.
+  if (/<[!?]/.test(svg)) problems.add('markup-declaration')
+  // A `<` that does not open a tag would be a parse error in a browser but not in a checker.
+  if (/<(?![A-Za-z/!?])/.test(svg)) problems.add('element')
+  for (const [, closing, name = '', attributes = ''] of svg.matchAll(TAG)) {
+    if (!ALLOWED_ELEMENTS.has(name)) problems.add('element')
+    if (closing) {
+      if (attributes.trim()) problems.add('attribute')
+      continue
+    }
+    if (!ATTRIBUTES.test(attributes)) problems.add('attribute')
+    for (const [, attribute = '', double, single] of attributes.matchAll(ATTRIBUTE)) {
+      const value = double ?? single ?? ''
+      if (attribute === 'style') {
+        if (unsafeCss(value)) problems.add('css')
+      } else if (attribute === 'xmlns') {
+        if (name !== 'svg' || value !== SVG_NAMESPACE) problems.add('attribute')
+      } else if (!ALLOWED_ATTRIBUTES.has(attribute)) {
+        problems.add('attribute')
+      }
+    }
+  }
+  const styles = [...svg.matchAll(STYLE_ELEMENT)]
+  // Every <style> needs its own end tag, or its CSS would go unchecked.
+  if (styles.length !== (svg.match(/<style\b/g)?.length ?? 0)) problems.add('css')
+  for (const match of styles) {
+    if (unsafeCss(match[1] ?? '')) problems.add('css')
+  }
+  return [...problems]
+}
+
+/**
+ * Strict allow-list check of generated SVG: known drawing elements and attributes only, in the
+ * SVG namespace, without declarations, entities or external references. The same contract runs
+ * in the ai-generate function and in the Studio; anything outside it is rejected, never "fixed".
  */
 export function checkAiSvg(
   svg: string,
@@ -29,18 +182,21 @@ export function checkAiSvg(
   const bytes = new TextEncoder().encode(svg).length
   if (bytes > maxBytes) problems.push('too-large')
   const trimmed = svg.trim()
-  if (!/^<svg[\s>]/i.test(trimmed) || !/<\/svg>\s*$/i.test(trimmed)) problems.push('not-svg')
+  if (!/^<svg[\s>]/.test(trimmed) || !/<\/svg>\s*$/.test(trimmed)) problems.push('not-svg')
   if (requireViewBox && !trimmed.includes(`viewBox="${AI_SCENE_VIEWBOX}"`)) problems.push('viewbox')
-  if (/<\s*script/i.test(svg)) problems.push('script')
+  if (/<\s*[\w.-]*:?script/i.test(svg)) problems.push('script')
   if (/\son[a-z]+\s*=/i.test(svg)) problems.push('event-handler')
   if (/javascript:/i.test(svg)) problems.push('javascript-url')
-  if (/<\s*foreignObject/i.test(svg)) problems.push('foreign-object')
+  if (/<\s*[\w.-]*:?foreignObject/i.test(svg)) problems.push('foreign-object')
   if (/(?:xlink:)?href\s*=\s*["'](?!#)/i.test(svg) || /url\(\s*['"]?(?!#)/i.test(svg)) {
     problems.push('external-reference')
   }
   if (/@import/i.test(svg)) problems.push('css-import')
-  if (!/<title>[^<]{1,200}<\/title>/i.test(svg)) problems.push('missing-title')
-  if (!/<desc>[^<]{1,300}<\/desc>/i.test(svg)) problems.push('missing-desc')
+  if (!/<title>[^<]{1,200}<\/title>/.test(svg)) problems.push('missing-title')
+  if (!/<desc>[^<]{1,300}<\/desc>/.test(svg)) problems.push('missing-desc')
+  for (const problem of checkMarkup(svg)) {
+    if (!problems.includes(problem)) problems.push(problem)
+  }
   return problems
 }
 

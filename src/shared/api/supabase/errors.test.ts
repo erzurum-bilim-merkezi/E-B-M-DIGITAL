@@ -1,6 +1,6 @@
 import { AppError, isAppError } from '@/shared/api/errors'
 
-import { toAppError, unwrap, unwrapResult } from './errors'
+import { isAlreadyExists, isRangeNotSatisfiable, toAppError, unwrap, unwrapResult } from './errors'
 
 describe('toAppError', () => {
   it('turns RPC errors (SQLSTATE KSxxx) into AppErrors with their message and details', () => {
@@ -40,6 +40,18 @@ describe('toAppError', () => {
     expect(error.message).toBe('E-posta ya da parola hatalı.')
   })
 
+  it('tells a deactivated Studio account why it cannot sign in', () => {
+    const error = toAppError({
+      __isAuthError: true,
+      name: 'AuthApiError',
+      status: 400,
+      code: 'user_banned',
+      message: 'User is banned',
+    })
+    expect(error.code).toBe('forbidden')
+    expect(error.message).toBe('Hesabınız pasif. Bir yöneticiyle iletişime geçin.')
+  })
+
   it('treats a failed fetch as a network error (retryable)', () => {
     const error = toAppError(new TypeError('Failed to fetch'))
     expect(error.code).toBe('network')
@@ -50,6 +62,21 @@ describe('toAppError', () => {
     const original = new AppError('quota')
     expect(toAppError(original)).toBe(original)
     expect(toAppError('boom').code).toBe('unavailable')
+  })
+})
+
+describe('error kinds the adapters handle themselves', () => {
+  it('recognises an existing Storage object in every shape Storage reports it', () => {
+    expect(isAlreadyExists({ status: 409, message: 'Conflict' })).toBe(true)
+    expect(isAlreadyExists({ status: 400, statusCode: '409', message: 'Duplicate' })).toBe(true)
+    expect(isAlreadyExists({ status: 400, message: 'The resource already exists' })).toBe(true)
+    expect(isAlreadyExists({ status: 403, statusCode: '403', message: 'Unauthorized' })).toBe(false)
+    expect(isAlreadyExists(null)).toBe(false)
+  })
+
+  it('recognises a page past the last row', () => {
+    expect(isRangeNotSatisfiable({ code: 'PGRST103', message: 'Requested range' })).toBe(true)
+    expect(isRangeNotSatisfiable({ code: 'PGRST116' })).toBe(false)
   })
 })
 

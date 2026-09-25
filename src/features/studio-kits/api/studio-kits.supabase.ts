@@ -18,7 +18,15 @@ import {
   type KitVersion,
 } from '@/entities/kit'
 import { AppError } from '@/shared/api/errors'
-import { publicObjectUrl, staffClient, unwrap } from '@/shared/api/supabase'
+import {
+  isAlreadyExists,
+  isRangeNotSatisfiable,
+  mediaObjectUrl,
+  readAll,
+  staffClient,
+  toAppError,
+  unwrap,
+} from '@/shared/api/supabase'
 
 import { duplicateDraft, duplicateIdentity, kitQrCodes, withPrefix } from './kit-logic'
 import type { KitRepository, PublishingService, PublishValidationDetails, QrRegistry } from './port'
@@ -56,9 +64,10 @@ async function getKit(id: string) {
   return studioKitSchema.parse(row)
 }
 
+/** Every kit, paged by id: a draft saved between two pages must not move a kit to a read page. */
 async function allKits() {
-  const rows = unwrap(
-    await staffClient().from('kits').select(KIT_COLUMNS).order('updated_at', { ascending: false }),
+  const rows = await readAll((from, to) =>
+    staffClient().from('kits').select(KIT_COLUMNS).order('id').range(from, to),
   )
   return kitList.parse(rows)
 }
@@ -97,14 +106,25 @@ async function writeJson(
   return error
 }
 
+async function removeFile(path: string) {
+  const { error } = await staffClient().storage.from('published').remove([path])
+  return error
+}
+
 /** v<n>.json is written once; an identical file from an interrupted run counts as written. */
 async function writeSnapshot(slug: string, version: KitVersion) {
   const path = `kits/${slug}/v${version.version}.json`
   const error = await writeJson(path, version.document, { immutable: true })
   if (!error) return
-  const { data } = await staffClient().storage.from('published').download(path)
-  const existing: unknown = data ? JSON.parse(await data.text()) : null
-  if (JSON.stringify(existing) !== JSON.stringify(version.document)) {
+  // Only "already there" is compared; any other failure (offline, permission) is itself.
+  if (!isAlreadyExists(error)) throw toAppError(error)
+  const download = await staffClient().storage.from('published').download(path)
+  // Not being able to read it back is retryable; only different content is a conflict.
+  if (download.error) throw toAppError(download.error)
+  // Both sides through the schema: key order is the schema's, whichever app version wrote it.
+  const existing = kitDocumentSchema.safeParse(JSON.parse(await download.data.text()))
+  const written = kitDocumentSchema.parse(version.document)
+  if (!existing.success || JSON.stringify(existing.data) !== JSON.stringify(written)) {
     throw new AppError(
       'conflict',
       'Bu sürümün dosyası farklı içerikle zaten var. Yöneticiye haber verin.',
@@ -113,13 +133,23 @@ async function writeSnapshot(slug: string, version: KitVersion) {
 }
 
 async function finalizedVersions() {
-  const rows = unwrap(
-    await staffClient()
+  const rows = await readAll((from, to) =>
+    staffClient()
       .from('kit_versions')
       .select(VERSION_COLUMNS)
-      .not('finalized_at', 'is', null),
+      .not('finalized_at', 'is', null)
+      .order('kit_id')
+      .order('version')
+      .range(from, to),
   )
   return versionList.parse(rows)
+}
+
+async function allQrCodes() {
+  const rows = await readAll((from, to) =>
+    staffClient().from('qr_codes').select(QR_COLUMNS).order('code').range(from, to),
+  )
+  return z.array(qrCodeRowSchema).parse(rows)
 }
 
 /**
@@ -134,10 +164,7 @@ async function regenerateIndexes() {
     const [kits, versions, qrRows] = await Promise.all([
       allKits(),
       finalizedVersions(),
-      staffClient()
-        .from('qr_codes')
-        .select(QR_COLUMNS)
-        .then((result) => z.array(qrCodeRowSchema).parse(unwrap(result))),
+      allQrCodes(),
     ])
     const now = new Date().toISOString()
     const writes = [
@@ -145,14 +172,12 @@ async function regenerateIndexes() {
       writeJson('qr-index.json', buildQrIndex(kits, versions, qrRows, now)),
       ...kits.flatMap((kit) => {
         const latest = latestVersionOf(kit.id, versions)
-        return latest
-          ? [
-              writeJson(`kits/${latest.document.slug}/latest.json`, {
-                version: latest.version,
-                publishedAt: latest.publishedAt,
-              }),
-            ]
-          : []
+        if (!latest) return []
+        const path = `kits/${latest.document.slug}/latest.json`
+        // An archived kit no longer opens by its address (its QR codes say it is archived).
+        return kit.status === 'archived'
+          ? [removeFile(path)]
+          : [writeJson(path, { version: latest.version, publishedAt: latest.publishedAt })]
       }),
     ]
     // oxlint-disable-next-line no-await-in-loop -- see above
@@ -186,10 +211,12 @@ async function mediaResolver(document: KitDocument) {
   const ids = [...collectMediaAssetIds(document)]
   if (ids.length === 0) return () => undefined
   const rows = z
-    .array(z.object({ id: z.uuid(), path: z.string(), alt: z.string() }))
-    .parse(unwrap(await staffClient().from('media_assets').select('id, path, alt').in('id', ids)))
+    .array(z.object({ id: z.uuid(), kind: z.string(), path: z.string(), alt: z.string() }))
+    .parse(
+      unwrap(await staffClient().from('media_assets').select('id, kind, path, alt').in('id', ids)),
+    )
   const assets = new Map(
-    rows.map((row) => [row.id, { url: publicObjectUrl('media', row.path), alt: row.alt }]),
+    rows.map((row) => [row.id, { url: mediaObjectUrl(row.kind, row.path), alt: row.alt }]),
   )
   return (assetId: string) => assets.get(assetId)
 }
@@ -215,7 +242,12 @@ async function listKits(
     )
   }
   const from = (Math.max(1, filter.page) - 1) * filter.pageSize
-  const { data, error, count } = await query.range(from, from + filter.pageSize - 1)
+  const { data, error, count } = await query.order('id').range(from, from + filter.pageSize - 1)
+  // The page no longer exists (kits were deleted meanwhile): go to the last one there is.
+  if (isRangeNotSatisfiable(error) && filter.page > 1) {
+    const first = await listKits({ ...filter, page: 1 })
+    return first.pageCount > 1 ? listKits({ ...filter, page: first.pageCount }) : first
+  }
   const items = kitList.parse(unwrap({ data, error }))
   const total = count ?? items.length
   const pageCount = Math.max(1, Math.ceil(total / filter.pageSize))

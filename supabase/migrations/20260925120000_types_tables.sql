@@ -29,6 +29,9 @@ create table public.profiles (
   must_change_password boolean not null default true,
   -- A temporary password is valid for 72 h (set on create and on reset).
   temp_password_expires_at timestamptz,
+  -- auth.users.encrypted_password when the temporary password was set: the change is accepted
+  -- only once the stored hash differs (the password really changed).
+  temp_password_hash text,
   created_at timestamptz not null default now()
 );
 
@@ -118,7 +121,7 @@ create table public.media_assets (
   height integer,
   duration_sec real,
   alt text not null default '' check (char_length(alt) <= 240),
-  -- Object path in the `media` bucket; the public URL is derived from it.
+  -- Object path in its bucket (`ai` for AI drawings, `media` otherwise); the URL derives from it.
   path text not null unique check (char_length(path) <= 300),
   source text not null check (source in ('upload', 'ai')),
   scene_group uuid,
@@ -246,7 +249,8 @@ create table public.ai_usage (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users (id) on delete set null,
   kind text not null check (kind in ('scene', 'icon', 'text', 'kit')),
-  status text not null check (status in ('ok', 'blocked', 'error')),
+  -- 'pending': reserved by ai_reserve while the provider works (counts towards the quota).
+  status text not null check (status in ('pending', 'ok', 'blocked', 'error')),
   provider text not null,
   model text not null,
   input_tokens integer,

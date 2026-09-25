@@ -145,3 +145,51 @@ describe('AI quota for the ai-generate function', () => {
     }
   })
 })
+
+describe('AI quota reservation (parallel requests)', () => {
+  it('counts generations still in flight, so parallel requests cannot exceed the limit', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    await db().sql(
+      `update public.app_settings set value = value || '{"aiDailyUserLimit": 2}'::jsonb where id = 1`,
+    )
+    const reserve = () =>
+      db().as(SERVICE).rpc<string>('ai_reserve', {
+        p_user: editor.id,
+        p_kind: 'text',
+        p_provider: 'fake',
+      })
+    await reserve()
+    await reserve()
+    const third = await dbError(reserve())
+    expect(third.code).toBe(KS.quota)
+    expect(third.details).toHaveProperty('resetsAt')
+  })
+
+  it('forgets a reservation a crashed function left behind (after 5 minutes)', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    await db().sql(
+      `update public.app_settings set value = value || '{"aiDailyUserLimit": 1}'::jsonb where id = 1`,
+    )
+    const id = await db().as(SERVICE).rpc<string>('ai_reserve', {
+      p_user: editor.id,
+      p_kind: 'text',
+      p_provider: 'fake',
+    })
+    // Six minutes old: stale today, or (just after midnight) not today at all — free either way.
+    await db().sql(
+      `update public.ai_usage set created_at = now() - interval '6 minutes' where id = $1`,
+      [id],
+    )
+    await expect(
+      db().as(SERVICE).rpc('ai_reserve', { p_user: editor.id, p_kind: 'text', p_provider: 'fake' }),
+    ).resolves.toBeTruthy()
+  })
+
+  it('is for the ai-generate function (service role) only', async () => {
+    const admin = await db().createStaff({ role: 'admin' })
+    const error = await dbError(
+      db().as(admin).rpc('ai_reserve', { p_user: admin.id, p_kind: 'text', p_provider: 'fake' }),
+    )
+    expect(error.code).toBe('42501')
+  })
+})

@@ -114,6 +114,35 @@ describe('Supabase explorer service', () => {
     expect(centerDevice.get()).toBeNull()
   })
 
+  it('keeps only the seated member’s code on a centre tablet', async () => {
+    signedInDevice()
+    centerDevice.set({ id: '0b8f1a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b', label: 'Tablet' })
+    knownCodes.set({ '5d0e9c4b-1a2b-4c3d-8e9f-0a1b2c3d4e5f': 'PREVKOD1' })
+    rpc('restore_explorer', () => ({ ok: true, explorer: EXPLORER, restoreCode: '7Q2MX9KA' }))
+
+    await service.restore('7q2m-x9ka')
+
+    expect(knownCodes.get()).toEqual({ [EXPLORER.id]: '7Q2MX9KA' })
+  })
+
+  it.each([
+    ['a centre tablet forgets the previous child’s code', true, { [EXPLORER.id]: '7Q2MX9KA' }],
+    [
+      'a personal device keeps every member’s code',
+      false,
+      { '5d0e9c4b-1a2b-4c3d-8e9f-0a1b2c3d4e5f': 'PREVKOD1', [EXPLORER.id]: '7Q2MX9KA' },
+    ],
+  ])('on joining, %s', async (_, center, codes) => {
+    signedInDevice()
+    if (center) centerDevice.set({ id: '0b8f1a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b', label: 'Tablet' })
+    knownCodes.set({ '5d0e9c4b-1a2b-4c3d-8e9f-0a1b2c3d4e5f': 'PREVKOD1' })
+    rpc('register_explorer', () => ({ explorer: EXPLORER, restoreCode: '7Q2MX9KA' }))
+
+    await service.register({ nickname: 'Ayşe Nur', avatar: 'teal' })
+
+    expect(knownCodes.get()).toEqual(codes)
+  })
+
   it('keeps kiosk mode when the PIN is wrong', async () => {
     signedInDevice()
     centerDevice.set({ id: '0b8f1a52-3c4d-4e5f-8a6b-7c8d9e0f1a2b', label: 'Tablet' })

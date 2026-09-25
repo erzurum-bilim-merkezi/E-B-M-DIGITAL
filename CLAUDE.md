@@ -16,6 +16,8 @@ Tailwind CSS 4 · Vitest 5 + Testing Library + MSW · Playwright + axe · oxlint
 | Unit tests: watch / once / coverage    | `npm test` / `npm run test:run` / `npm run test:coverage`       |
 | Single test file                       | `npx vitest run src/path/File.test.tsx`                         |
 | E2E + accessibility (Pages-like, 4173) | `npm run test:e2e` (`--project=kids-mobile` etc. to narrow)     |
+| Database tests (PGlite, no Docker)     | `npm run test:db` (CI also runs them on a local Supabase stack) |
+| Edge Functions copy of `src/entities`  | `npm run sync:edge` after changing entities (CI checks it)      |
 | Production build                       | `npm run build`                                                 |
 
 ## Architecture — enforced by `npm run lint:boundaries`
@@ -24,15 +26,19 @@ Tailwind CSS 4 · Vitest 5 + Testing Library + MSW · Playwright + axe · oxlint
 src/
   app/        composition root: providers, router (guards), layouts, mock backend seed, styles
   pages/      route components — thin, compose features, no business logic (kids/, studio/)
-  features/   vertical slices: api/ (port + mock adapter + queries) components/ index.ts
+  features/   vertical slices: api/ (port + mock + supabase adapters + queries) components/ index.ts
   entities/   pure domain modules (kit, explorer, activity, studio): zod + relative .ts only
   shared/     domain-agnostic: ui/ (ui/kid/) api/ config/ lib/ hooks/
   test/       test setup, render helpers, mock-backend + app-harness helpers
 ```
 
 - Dependencies point down only: `app → pages → features → entities → shared` (ADR 0006).
-- Data goes through feature **ports** with mock adapters today (ADR 0015); never call storage or
-  mock tables from components.
+- Data goes through feature **ports** (ADR 0015): `*.mock.ts` (dev, demo, fast E2E) and
+  `*.supabase.ts` (live, ADR 0021), chosen by `VITE_BACKEND` in `api/index.ts`. Adapters use
+  `@/shared/api/supabase`; never call supabase-js, storage or mock tables from components.
+- Database changes are migrations in `supabase/migrations` with tests in `supabase/tests`; the live
+  project changes only through the approved `db-migrate` workflow (ADR 0016) — never run SQL,
+  seeds or tests against it.
 - Outside a feature, import it only via `@/features/<name>` (its `index.ts`).
 - Features never import each other's internals. Shared needs move to `shared/`; composition happens in pages.
 - Use the `@/` alias across directories; relative imports only inside the same slice.

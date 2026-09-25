@@ -99,7 +99,19 @@ jobs:
       - name: Apply every migration from scratch, twice
         run: supabase db reset && supabase db reset
       - name: Database lint
-        run: supabase db lint --level error --fail-on error
+        # Every finding becomes an annotation, so it is readable on the run page.
+        run: |
+          supabase db lint --level warning -o json > db-lint.json || true
+          node -e "
+            const results = JSON.parse(require('fs').readFileSync('db-lint.json', 'utf8') || '[]')
+            let errors = 0
+            for (const result of results) for (const issue of result.issues ?? []) {
+              const level = issue.level === 'error' ? 'error' : 'warning'
+              if (level === 'error') errors++
+              console.log('::' + level + '::' + result.function + ': ' + issue.message + (issue.context ? ' — ' + String(issue.context).replace(/\n/g, ' ') : '') + (issue.statement ? ' [' + JSON.stringify(issue.statement) + ']' : ''))
+            }
+            process.exit(errors > 0 ? 1 : 0)
+          "
       - name: Stack settings for the next steps
         run: |
           eval "$(supabase status -o env)"

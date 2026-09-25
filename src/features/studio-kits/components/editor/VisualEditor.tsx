@@ -92,7 +92,11 @@ function ScenePicker({
             <span className="text-sm font-medium text-fg">{meta.label}</span>
             <span className="text-xs text-fg-muted">{meta.description}</span>
             {missing.length > 0 ? (
-              <Badge variant="warning" className="self-start">
+              // The state list can outgrow a 320 px two-column grid cell — let it wrap (WCAG 1.4.10).
+              <Badge
+                variant="warning"
+                className="h-auto min-h-6 max-w-full self-start rounded-md py-0.5 whitespace-normal"
+              >
                 Uyumsuz: {missing.join(', ')}
               </Badge>
             ) : (

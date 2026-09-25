@@ -15,11 +15,7 @@ type SendResult = {
 
 /** A published kit: its codes are in the QR registry. */
 async function publishedKit() {
-  await db().sql(
-    `insert into public.kits (id, slug, qr_prefix, status, draft)
-     values ($1::uuid, 'deneme', 'DN', 'published', jsonb_build_object('id', $2::text, 'slug', 'deneme', 'qrPrefix', 'DN'))`,
-    [KIT, KIT],
-  )
+  await db().insertKit({ id: KIT, slug: 'deneme', qrPrefix: 'DN', status: 'published' })
   await db().sql(`insert into public.qr_codes (code, kit_id, step_id) values ('DN', $1, null)`, [
     KIT,
   ])

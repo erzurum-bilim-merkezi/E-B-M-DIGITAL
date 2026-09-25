@@ -92,11 +92,7 @@ describe('security model', () => {
     const adminWithoutTotp = await db().createStaff({ role: 'admin', aal: 'aal1' })
     const inactive = await db().createStaff({ role: 'editor', active: false })
     const device = await db().createDevice()
-    await db().sql(
-      `insert into public.kits (id, slug, qr_prefix, draft)
-       values ('00000000-0000-4000-8000-000000000001', 'deneme', 'DN',
-               '{"id": "00000000-0000-4000-8000-000000000001", "slug": "deneme", "qrPrefix": "DN"}')`,
-    )
+    await db().insertKit({ slug: 'deneme', qrPrefix: 'DN' })
 
     const visible = async (actor: Parameters<ReturnType<typeof db>['as']>[0]) =>
       (await db().as(actor).sql('select id from public.kits')).length

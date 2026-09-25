@@ -208,6 +208,29 @@ export async function createTestDb() {
       return { kind: 'user', id, anonymous: false, aal }
     },
 
+    /** A kit row as-is (bypasses the RPCs); its owner is a fresh auth user. */
+    async insertKit({
+      id = crypto.randomUUID(),
+      slug,
+      qrPrefix,
+      status = 'draft',
+      draft = {},
+    }: {
+      id?: string
+      slug: string
+      qrPrefix: string
+      status?: 'draft' | 'in_review' | 'published' | 'archived'
+      draft?: Record<string, unknown>
+    }) {
+      const owner = await db.createUser({ email: `owner-${id.slice(0, 8)}@kasif.test` })
+      await query(
+        `insert into public.kits (id, slug, qr_prefix, status, draft, owner_id, updated_by)
+         values ($1, $2, $3, $4, $5, $6, $6)`,
+        [id, slug, qrPrefix, status, JSON.stringify({ ...draft, id, slug, qrPrefix }), owner],
+      )
+      return id
+    },
+
     /** An anonymous Kâşif device (signInAnonymously). */
     async createDevice(): Promise<Extract<Actor, { kind: 'user' }>> {
       const id = await db.createUser({ anonymous: true })

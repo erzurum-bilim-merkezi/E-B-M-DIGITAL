@@ -324,7 +324,6 @@ grant select on
   public.explorer_events,
   public.explorer_kit_progress,
   public.explorer_badges,
-  public.center_devices,
   public.app_settings,
   public.ai_usage,
   public.audit_log
@@ -355,6 +354,9 @@ create policy progress_read on public.explorer_kit_progress for select to authen
 create policy badges_read on public.explorer_badges for select to authenticated
   using (private.is_admin() or explorer_id in (select private.device_explorer_ids()));
 
+-- Never the PIN or setup-code hashes (CenterDeviceSummary in the settings feature).
+grant select (id, label, setup_expires_at, device_uid, activated_at, revoked_at, created_by, created_at)
+  on public.center_devices to authenticated;
 create policy center_devices_read on public.center_devices for select to authenticated
   using (private.is_admin());
 create policy ai_usage_read on public.ai_usage for select to authenticated

@@ -52,10 +52,11 @@ create table public.kits (
   reviewed_lock_version integer,
   lock_version integer not null default 0,
   published_lock_version integer,
-  owner_id uuid references auth.users (id) on delete set null,
+  -- Staff accounts are deactivated, never deleted: authorship stays resolvable.
+  owner_id uuid not null references auth.users (id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  updated_by uuid references auth.users (id) on delete set null,
+  updated_by uuid not null references auth.users (id) on delete restrict,
   constraint kits_draft_identity check (
     draft ->> 'id' = id::text and draft ->> 'slug' = slug and draft ->> 'qrPrefix' = qr_prefix
   )
@@ -76,7 +77,7 @@ create table public.kit_versions (
   version integer not null check (version > 0),
   document jsonb not null,
   notes text not null default '' check (char_length(notes) <= 500),
-  published_by uuid references auth.users (id) on delete set null,
+  published_by uuid not null references auth.users (id) on delete restrict,
   published_at timestamptz not null default now(),
   ai_review_confirmed boolean not null default false,
   finalized_at timestamptz,
@@ -122,7 +123,7 @@ create table public.media_assets (
   source text not null check (source in ('upload', 'ai')),
   scene_group uuid,
   scene_state text check (char_length(scene_state) <= 24),
-  created_by uuid references auth.users (id) on delete set null,
+  created_by uuid not null references auth.users (id) on delete restrict,
   created_at timestamptz not null default now()
 );
 create index media_assets_created_at_idx on public.media_assets (created_at desc);
@@ -205,7 +206,7 @@ create table public.center_devices (
   device_uid uuid references auth.users (id) on delete set null,
   activated_at timestamptz,
   revoked_at timestamptz,
-  created_by uuid references auth.users (id) on delete set null,
+  created_by uuid not null references auth.users (id) on delete restrict,
   created_at timestamptz not null default now()
 );
 create unique index center_devices_device_uid_idx on public.center_devices (device_uid)

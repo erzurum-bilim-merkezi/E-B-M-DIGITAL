@@ -35,14 +35,15 @@ async function centerDevice({
 }: { setup?: string; pin?: string; device?: Actor } = {}) {
   const id = crypto.randomUUID()
   await db().sql(
-    `insert into public.center_devices (id, label, setup_code_hash, setup_expires_at, pin_hash, device_uid, activated_at)
-     values ($1, 'Giriş tableti', $2, now() + interval '1 day', $3, $4, $5)`,
+    `insert into public.center_devices (id, label, setup_code_hash, setup_expires_at, pin_hash, device_uid, activated_at, created_by)
+     values ($1, 'Giriş tableti', $2, now() + interval '1 day', $3, $4, $5, $6)`,
     [
       id,
       sha256(`kasif-restore:center:${setup}`),
       sha256(`kasif-center-pin:${id}:${pin}`),
       device?.kind === 'user' ? device.id : null,
       device ? new Date().toISOString() : null,
+      (await db().createStaff({ role: 'admin' })).id,
     ],
   )
   return id

@@ -1,4 +1,10 @@
-import { collectMediaAssetIds, kitVersionSchema, studioKitSchema } from '@/entities/kit'
+import {
+  AI_ICON_MAX_BYTES,
+  checkAiSvg,
+  collectMediaAssetIds,
+  kitVersionSchema,
+  studioKitSchema,
+} from '@/entities/kit'
 import { explorerSchema } from '@/entities/explorer'
 import { mediaAssetSchema, type MediaAsset } from '@/entities/studio'
 import { AppError } from '@/shared/api/errors'
@@ -33,6 +39,19 @@ const ALLOWED_MIME: Record<MediaAsset['kind'], RegExp> = {
   captions: /^text\/vtt$/,
   'ai-scene': /^image\/svg\+xml$/,
   'ai-icon': /^image\/svg\+xml$/,
+}
+
+/** AI drawings are served as SVG: the same safety check as when they were generated. */
+async function unsafeSvg(kind: MediaAsset['kind'], blob: Blob) {
+  if (kind === 'ai-scene') return checkAiSvg(await blob.text()).length > 0
+  if (kind === 'ai-icon') {
+    const problems = checkAiSvg(await blob.text(), {
+      maxBytes: AI_ICON_MAX_BYTES,
+      requireViewBox: false,
+    })
+    return problems.length > 0
+  }
+  return false
 }
 
 function sizeLimit(kind: MediaAsset['kind']) {
@@ -105,7 +124,8 @@ export function createMockMediaRepository(): MediaRepository {
           'Video yüklenmez. Videoları YouTube ya da https MP4 bağlantısı olarak ekleyin.',
         )
       }
-      if (!ALLOWED_MIME[input.kind].test(input.mime)) {
+      // The declared type must be the file's own type: no PNG label on an SVG body.
+      if (!ALLOWED_MIME[input.kind].test(input.mime) || input.blob.type !== input.mime) {
         throw new AppError('validation', 'Bu dosya türü kabul edilmiyor.')
       }
       if (input.blob.size > sizeLimit(input.kind)) {
@@ -113,6 +133,9 @@ export function createMockMediaRepository(): MediaRepository {
       }
       if ((input.kind === 'image' || input.kind === 'icon') && !input.alt.trim()) {
         throw new AppError('validation', 'Görseller için alternatif metin zorunlu.')
+      }
+      if (await unsafeSvg(input.kind, input.blob)) {
+        throw new AppError('validation', 'Çizim güvenlik kontrolünden geçemedi.')
       }
       const id = crypto.randomUUID()
       await putMockMedia(id, input.blob)

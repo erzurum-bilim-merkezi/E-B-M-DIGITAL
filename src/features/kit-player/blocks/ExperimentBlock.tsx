@@ -95,9 +95,10 @@ export function ExperimentBlock({ step, onComplete }: BlockProps<'experiment'>) 
             <KidPanel>
               <h2 className="mb-3 text-xl font-bold">🧰 Malzemeler</h2>
               <ul className="grid gap-2 sm:grid-cols-2">
-                {step.materials.map((material) => (
+                {step.materials.map((material, materialIndex) => (
                   <li
-                    key={material}
+                    // oxlint-disable-next-line react/no-array-index-key -- static strings that may repeat or be blank
+                    key={materialIndex}
                     className="flex items-center gap-2 rounded-xl bg-kid-surface-2 px-3 py-2 text-lg font-medium"
                   >
                     <span aria-hidden="true">✔️</span> {material}
@@ -113,8 +114,9 @@ export function ExperimentBlock({ step, onComplete }: BlockProps<'experiment'>) 
             >
               <h2 className="mb-2 text-xl font-bold">⚠️ Güvenlik</h2>
               <ul className="flex list-disc flex-col gap-1 pl-6 text-lg">
-                {step.safety.map((note) => (
-                  <li key={note}>{note}</li>
+                {step.safety.map((note, noteIndex) => (
+                  // oxlint-disable-next-line react/no-array-index-key -- static strings that may repeat or be blank
+                  <li key={noteIndex}>{note}</li>
                 ))}
               </ul>
             </div>

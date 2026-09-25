@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { shuffleStable } from '@/entities/kit'
 import { useFocusAfterUpdate } from '@/shared/hooks/focus-hooks'
@@ -6,7 +6,7 @@ import { cn } from '@/shared/lib/cn'
 import { KidButton, KidPanel, SpeechBubble } from '@/shared/ui/kid'
 
 import { usePlayer } from '../components/usePlayer'
-import { useCompleteOnce, type BlockProps } from './types'
+import { reannounce, useCompleteOnce, type BlockProps } from './types'
 
 /**
  * Sequence (F5.8): tap one card, then the card to swap it with — or use the ▲/▼ buttons.
@@ -15,15 +15,21 @@ import { useCompleteOnce, type BlockProps } from './types'
 export function SequenceBlock({ step, onComplete }: BlockProps<'sequence'>) {
   const { celebrate } = usePlayer()
   const complete = useCompleteOnce(onComplete)
-  const [order, setOrder] = useState(() =>
-    shuffleStable(
-      step.items.map((item) => item.id),
-      step.id,
-    ),
-  )
+  const ids = step.items.map((item) => item.id)
+  // Which card set `order` was shuffled from: the Studio live preview adds and removes items.
+  const itemSet = `${step.id}|${ids.toSorted().join('|')}`
+  const [order, setOrder] = useState(() => shuffleStable(ids, step.id))
+  const [orderFor, setOrderFor] = useState(itemSet)
   const [selected, setSelected] = useState<string | null>(null)
   const [result, setResult] = useState<'idle' | 'wrong' | 'right'>('idle')
   const [announcement, setAnnouncement] = useState('')
+  if (orderFor !== itemSet) {
+    // Adjust state while rendering (not in an effect): start over with the new card set.
+    setOrderFor(itemSet)
+    setOrder(shuffleStable(ids, step.id))
+    setSelected(null)
+    setResult('idle')
+  }
   const attempts = useRef(0)
   const feedbackRef = useRef<HTMLDivElement>(null)
   const focusAfterUpdate = useFocusAfterUpdate()
@@ -105,9 +111,12 @@ export function SequenceBlock({ step, onComplete }: BlockProps<'sequence'>) {
                   </span>
                   <span className="flex-1">{item.label}</span>
                   {result !== 'idle' && (
-                    <span aria-label={inPlace ? 'doğru yerde' : 'yanlış yerde'}>
-                      {inPlace ? '✅' : '↕️'}
-                    </span>
+                    <>
+                      <span aria-hidden="true">{inPlace ? '✅' : '↕️'}</span>
+                      <span className="sr-only">
+                        {inPlace ? '(doğru yerde)' : '(yanlış yerde)'}
+                      </span>
+                    </>
                   )}
                 </button>
                 {/* aria-disabled, not disabled: the arrow just pressed keeps focus at the ends. */}
@@ -162,6 +171,18 @@ export function SequenceBlock({ step, onComplete }: BlockProps<'sequence'>) {
 
 const PAIR_COLORS = ['green', 'sky', 'purple', 'orange', 'pink'] as const
 
+/** Shared pair number on both matched cards, so pairs are not told apart by color alone. */
+function PairBadge({ number }: { number: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-7 shrink-0 place-items-center rounded-full bg-kid-surface text-base font-bold text-kid-fg tabular shadow-kid-soft"
+    >
+      {number}
+    </span>
+  )
+}
+
 /** Matching: tap a word on the left, then its partner on the right. */
 export function MatchingBlock({ step, onComplete }: BlockProps<'matching'>) {
   const { celebrate } = usePlayer()
@@ -177,15 +198,21 @@ export function MatchingBlock({ step, onComplete }: BlockProps<'matching'>) {
   const [left, setLeft] = useState<string | null>(null)
   const [matched, setMatched] = useState<readonly string[]>([])
   const [message, setMessage] = useState(step.prompt || '👆 Soldan bir karta, sonra eşine dokun!')
-  const [shake, setShake] = useState<string | null>(null)
+  const [shake, setShake] = useState<{ id: string; key: number } | null>(null)
   const attempts = useRef(0)
+  // Clear the shake so the next wrong tap restarts it; the timer dies with the block.
+  useEffect(() => {
+    if (!shake) return
+    const timer = window.setTimeout(() => setShake(null), 450)
+    return () => window.clearTimeout(timer)
+  }, [shake])
   const byId = useMemo(() => new Map(step.pairs.map((pair) => [pair.id, pair])), [step.pairs])
   const done = matched.length === step.pairs.length && step.pairs.length > 0
 
   const pickRight = (id: string) => {
     if (done || matched.includes(id)) return
     if (!left) {
-      setMessage('Önce soldan bir kart seç. 👈')
+      setMessage((previous) => reannounce(previous, 'Önce soldan bir kart seç. 👈'))
       return
     }
     attempts.current++
@@ -202,13 +229,14 @@ export function MatchingBlock({ step, onComplete }: BlockProps<'matching'>) {
         setMessage(`✅ ${pair?.left ?? ''} → ${pair?.right ?? ''}. Devam!`)
       }
     } else {
-      setShake(id)
-      window.setTimeout(() => setShake(null), 450)
-      setMessage('Bu ikisi eş değil. Tekrar dene! 😊')
+      // A fresh object per wrong tap restarts the timer; the attempt count keeps it unique.
+      setShake({ id, key: attempts.current })
+      setMessage((previous) => reannounce(previous, 'Bu ikisi eş değil. Tekrar dene! 😊'))
     }
   }
 
   const colorOf = (id: string) => PAIR_COLORS[matched.indexOf(id) % PAIR_COLORS.length] ?? 'green'
+  const numberOf = (id: string) => matched.indexOf(id) + 1
 
   return (
     <div className="flex flex-col gap-3">
@@ -233,7 +261,12 @@ export function MatchingBlock({ step, onComplete }: BlockProps<'matching'>) {
                   )}
                 >
                   {pair.left}
-                  {isMatched && <span className="sr-only"> (eşleşti)</span>}
+                  {isMatched && (
+                    <>
+                      <span className="sr-only"> (eşleşti: {pair.right})</span>
+                      <PairBadge number={numberOf(pair.id)} />
+                    </>
+                  )}
                 </KidButton>
               </li>
             )
@@ -253,11 +286,16 @@ export function MatchingBlock({ step, onComplete }: BlockProps<'matching'>) {
                   onClick={() => pickRight(id)}
                   className={cn(
                     'w-full text-lg aria-disabled:cursor-default aria-disabled:opacity-100',
-                    shake === id && 'kid-ambient [animation:kid-shake_0.4s_ease-in-out]',
+                    shake?.id === id && 'kid-ambient [animation:kid-shake_0.4s_ease-in-out]',
                   )}
                 >
                   {pair.right}
-                  {isMatched && <span className="sr-only"> (eşleşti)</span>}
+                  {isMatched && (
+                    <>
+                      <span className="sr-only"> (eşleşti: {pair.left})</span>
+                      <PairBadge number={numberOf(id)} />
+                    </>
+                  )}
                 </KidButton>
               </li>
             )

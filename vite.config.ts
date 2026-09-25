@@ -6,7 +6,8 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-import { parseEnv } from './src/shared/config/env.schema.ts'
+import { buildCsp, REFERRER_POLICY } from './src/shared/config/csp.ts'
+import { findSecretLikeKeys, parseEnv, secretLeakMessage } from './src/shared/config/env.schema.ts'
 
 /** Public path the app is served from, e.g. `/E-B-M-DIGITAL/` on GitHub Pages. */
 function resolveBasePath() {
@@ -34,10 +35,43 @@ function comingSoonDocument(enabled: boolean): Plugin {
   }
 }
 
+/**
+ * GitHub Pages cannot send headers, so every build carries its CSP as a <meta> right after the
+ * charset (before any script or stylesheet). The dev server stays unrestricted (HMR, devtools).
+ */
+function contentSecurityPolicy(): Plugin {
+  const tags = [
+    // Same source and inputs as the nginx header (scripts/generate-nginx-headers.mjs).
+    `<meta http-equiv="Content-Security-Policy" content="${buildCsp({ backendOrigin: process.env['CSP_BACKEND_ORIGIN'] || null })}" />`,
+    `<meta name="referrer" content="${REFERRER_POLICY}" />`,
+  ]
+  return {
+    name: 'kasif:csp-meta',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler: (html) => {
+        const charset = /<meta charset="UTF-8" \/>/i
+        if (!charset.test(html)) throw new Error('index.html must start <head> with <meta charset>')
+        return html.replace(charset, (match) => [match, ...tags].join('\n    '))
+      },
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Fail the build (not the user's browser) when configuration is invalid.
-  const appEnv = parseEnv(loadEnv(mode, process.cwd(), 'VITE_'))
+  const rawEnv = loadEnv(mode, process.cwd(), 'VITE_')
+  const appEnv = parseEnv(rawEnv)
+
+  // VITE_* values are public. CI (which builds the live site) refuses secret-looking ones;
+  // locally we warn loudly — env.ts reads known keys only, so they never reach the bundle.
+  const leakedKeys = findSecretLikeKeys(rawEnv)
+  if (leakedKeys.length > 0) {
+    if (process.env['CI']) throw new Error(secretLeakMessage(leakedKeys))
+    console.warn(`\n⚠  ${secretLeakMessage(leakedKeys)}\n`)
+  }
 
   return {
     base: resolveBasePath(),
@@ -45,18 +79,46 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       comingSoonDocument(appEnv.VITE_COMING_SOON),
+      contentSecurityPolicy(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.svg'],
-        manifest: {
-          name: appEnv.VITE_APP_NAME,
-          short_name: 'EBM',
-          lang: 'tr',
-          theme_color: '#0a1733',
-          background_color: '#0a1733',
-          display: 'standalone',
-          icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' }],
+        includeAssets: ['favicon.svg', 'kasifkit-logo-mark.svg'],
+        workbox: {
+          cacheId: 'kasif',
+          cleanupOutdatedCaches: true,
+          globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
         },
+        // Pre-launch the installable app is the coming-soon page; afterwards it is Kâşif.
+        manifest: appEnv.VITE_COMING_SOON
+          ? {
+              name: appEnv.VITE_APP_NAME,
+              short_name: 'EBM',
+              lang: 'tr',
+              theme_color: '#0a1733',
+              background_color: '#0a1733',
+              display: 'standalone',
+              icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml' }],
+            }
+          : {
+              name: `Kâşif · ${appEnv.VITE_APP_NAME}`,
+              short_name: 'Kâşif',
+              description:
+                'Bilim merkezindeki deney kitlerinin QR kodlarını okut, etkileşimli kartlarla keşfet, rozet topla.',
+              lang: 'tr',
+              dir: 'ltr',
+              start_url: '.',
+              scope: '.',
+              display: 'standalone',
+              orientation: 'any',
+              theme_color: '#4f46e5',
+              background_color: '#eef4ff',
+              categories: ['education', 'kids'],
+              icons: [
+                { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+                { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+                { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+              ],
+            },
       }),
     ],
     resolve: {
@@ -88,7 +150,7 @@ export default defineConfig(({ mode }) => {
       unstubEnvs: true,
       coverage: {
         provider: 'v8',
-        reporter: ['text', 'html', 'lcov'],
+        reporter: ['text', 'html', 'lcov', 'json-summary'],
         include: ['src/**/*.{ts,tsx}'],
         exclude: [
           'src/**/*.test.{ts,tsx}',

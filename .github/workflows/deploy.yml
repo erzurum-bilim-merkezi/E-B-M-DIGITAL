@@ -8,10 +8,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege: the build job only reads; Pages rights are granted to the deploy job alone.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -23,7 +22,14 @@ env:
 jobs:
   build:
     name: Build site
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # `branches: [main]` above matches the triggering run's branch *name* — a fork's PR from its own
+    # `main` would match too. Deploy only successful CI runs of pushes to this repository's main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -35,6 +41,15 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Refuse to launch on the mock backend
+        # The in-browser mock (demo accounts, local data) must never be the public app (ADR 0013).
+        env:
+          VITE_COMING_SOON: ${{ vars.VITE_COMING_SOON || 'true' }}
+        run: |
+          if [ "$VITE_COMING_SOON" != "true" ] && grep -q "= 'mock'" src/shared/config/backend.ts; then
+            echo "::error::Launch needs the live backend (F12). Keep VITE_COMING_SOON=true until then."
+            exit 1
+          fi
       - name: Build
         run: npm run build
         env:
@@ -50,6 +65,8 @@ jobs:
           find dist -name '*.map' -delete
           # SPA fallback: GitHub Pages serves 404.html for unknown paths (deep links).
           cp dist/index.html dist/404.html
+          # Test hooks must never ship.
+          if grep -rq "__KASIF_E2E__" dist; then echo "::error::E2E hooks found in dist"; exit 1; fi
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
@@ -60,6 +77,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

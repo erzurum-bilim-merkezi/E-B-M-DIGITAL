@@ -1,0 +1,17 @@
+// Kâşif player: blocks, scenes, visuals and the card shell. Knows nothing about progress,
+// activity or routing — pages compose it (F5.5).
+export { BLOCK_COMPONENTS } from './blocks/block-components'
+export { StepRenderer } from './blocks/registry'
+export type { BlockCompletion, BlockProps } from './blocks/types'
+export { KitIcon } from './components/KitIcon'
+export { LIBRARY_ICON_COMPONENTS } from './components/library-icons'
+export { KitHero, KitMenu, KitTile } from './components/KitMenu'
+export { PlayerProvider } from './components/PlayerContext'
+export { usePlayer, type PlayerEnvironment } from './components/usePlayer'
+export { StepShell, type NavTarget } from './components/StepShell'
+export { AiSceneImage } from './visuals/AiSceneImage'
+export { MediaImage } from './visuals/MediaImage'
+export { VideoPlayer, WATCHED_RATIO, YOUTUBE_SANDBOX } from './visuals/VideoPlayer'
+export { isAnimatedVisual } from './visuals/is-animated-visual'
+export { VisualArea } from './visuals/VisualArea'
+export { SceneView } from './scenes/registry'

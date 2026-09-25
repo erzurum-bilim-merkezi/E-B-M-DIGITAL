@@ -45,7 +45,13 @@
     "import/no-unassigned-import": [
       "warn",
       {
-        "allow": ["**/*.css", "@testing-library/jest-dom/vitest"]
+        "allow": ["**/*.css", "@testing-library/jest-dom/vitest", "fake-indexeddb/auto"]
+      }
+    ],
+    "no-underscore-dangle": [
+      "warn",
+      {
+        "allow": ["__KASIF_E2E__", "__KASIF_E2E_SEED__"]
       }
     ]
   },
@@ -55,6 +61,15 @@
       "rules": {
         "typescript/no-non-null-assertion": "off",
         "react/only-export-components": "off"
+      }
+    },
+    {
+      "files": ["e2e/**"],
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "no-empty-pattern": "off",
+        "no-shadow": "off",
+        "no-await-in-loop": "off"
       }
     },
     {

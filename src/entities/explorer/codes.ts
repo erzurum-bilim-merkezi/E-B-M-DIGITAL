@@ -1,0 +1,66 @@
+/** Crockford base32: no I, L, O, U — easy to read aloud and to type from a printed card. */
+export const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+
+const RESTORE_LENGTH = 8
+export const RESTORE_CODE_PREFIX = 'KSF'
+
+function randomCrockford(length: number) {
+  const bytes = new Uint8Array(length)
+  crypto.getRandomValues(bytes)
+  let out = ''
+  for (const byte of bytes) out += CROCKFORD[byte % 32] ?? '0'
+  return out
+}
+
+/** 8 random base32 characters ≈ 40 bits. Shown once, then only on the Kâşif card. */
+export function generateRestoreCode() {
+  return randomCrockford(RESTORE_LENGTH)
+}
+
+/** "7Q2MX9KA" → "KSF-7Q2M-X9KA" */
+export function formatRestoreCode(code: string) {
+  return `${RESTORE_CODE_PREFIX}-${code.slice(0, 4)}-${code.slice(4, 8)}`
+}
+
+/**
+ * Accepts what a child types or the scanner reads: optional "KSF" prefix, any dashes/spaces,
+ * lower case, and the usual look-alikes (O→0, I/L→1). Returns the 8-char code or null.
+ */
+export function normalizeRestoreCode(input: string) {
+  let value = input.toUpperCase().replace(/[\s\-_.]/g, '')
+  if (value.startsWith(RESTORE_CODE_PREFIX) && value.length === RESTORE_LENGTH + 3) {
+    value = value.slice(RESTORE_CODE_PREFIX.length)
+  }
+  value = value.replace(/O/g, '0').replace(/[IL]/g, '1')
+  if (value.length !== RESTORE_LENGTH) return null
+  for (const char of value) if (!CROCKFORD.includes(char)) return null
+  return value
+}
+
+/** Public 4-char tag ("A7F2") — distinguishes two "Ayşe"s on staff dashboards. */
+export function generateDisplayCode() {
+  return randomCrockford(4)
+}
+
+async function sha256Hex(text: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+/** SHA-256 hex — the server stores only this, never the code itself. */
+export async function hashRestoreCode(code: string) {
+  return sha256Hex(`kasif-restore:${code}`)
+}
+
+/**
+ * Educator PIN of a centre device, salted with the device id: equal PINs on two tablets never
+ * share a hash, so one leaked hash cannot be looked up in a table of all 4–8 digit PINs.
+ */
+export async function hashCenterPin(centerDeviceId: string, pin: string) {
+  return sha256Hex(`kasif-center-pin:${centerDeviceId}:${pin}`)
+}
+
+/** 6-char setup code for centre devices (single use, 24 h). */
+export function generateSetupCode() {
+  return randomCrockford(6)
+}

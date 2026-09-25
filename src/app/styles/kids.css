@@ -1,0 +1,579 @@
+/*
+ * Kâşif (children's app) tokens — scoped to the `.kasif` root that KidsLayout renders.
+ * Day sky in light mode, the logo's night space in dark mode; kit themes tint the sky and set
+ * the accent. Card colors keep ≥ 4.5:1 with their text (see kids-tokens.test.ts).
+ */
+@theme inline {
+  --color-kid-surface: var(--kid-surface);
+  --color-kid-surface-2: var(--kid-surface-2);
+  --color-kid-border: var(--kid-border);
+  --color-kid-control-border: var(--kid-control-border);
+  --color-kid-fg: var(--kid-fg);
+  --color-kid-fg-soft: var(--kid-fg-soft);
+  --color-kid-primary: var(--kid-primary);
+  --color-kid-primary-hover: var(--kid-primary-hover);
+  --color-kid-primary-fg: var(--kid-primary-fg);
+  --color-kid-link: var(--kid-link);
+  --color-kid-accent: var(--kit-accent);
+  --color-kid-accent-fg: var(--kit-accent-fg);
+  --color-kid-success: var(--kid-success);
+  --color-kid-success-bg: var(--kid-success-bg);
+  --color-kid-danger: var(--kid-danger);
+  --color-kid-danger-bg: var(--kid-danger-bg);
+  --color-kid-warning-bg: var(--kid-warning-bg);
+  --color-kid-focus: var(--kid-focus);
+  --color-kid-sun: #ffd653;
+  --color-kid-teal: #2be0c8;
+  --color-kid-orange: #ffb13d;
+  --color-kid-night: #1e1b54;
+  --color-kid-speak: #c0560d;
+  --color-kid-speak-active: #c0392b;
+
+  --radius-kid: 1.75rem;
+  --radius-kid-sm: 1.125rem;
+
+  --shadow-kid-card: 0 10px 26px var(--kid-shadow);
+  --shadow-kid-soft: 0 4px 14px var(--kid-shadow);
+  --shadow-kid-3d: 0 6px 0 var(--kid-primary-shadow), 0 10px 22px var(--kid-shadow);
+  --shadow-kid-3d-accent: 0 6px 0 var(--kit-accent-shadow), 0 10px 22px var(--kid-shadow);
+  --shadow-kid-3d-pressed: 0 2px 0 var(--kid-primary-shadow);
+  --shadow-kid-speak: 0 6px 0 #8a3d09;
+  --shadow-kid-speak-pressed: 0 2px 0 #8a3d09;
+  --shadow-kid-speak-active: 0 6px 0 #8e2a20;
+  --shadow-kid-speak-active-pressed: 0 2px 0 #8e2a20;
+}
+
+@layer base {
+  .kasif {
+    --kid-surface: #ffffff;
+    --kid-surface-2: #f3f1ff;
+    --kid-border: #e3e0f7;
+    /* Boundary of inputs and switches (WCAG 1.4.11): ≥ 3:1 on white, surface-2 and every kit sky. */
+    --kid-control-border: #7470b3;
+    --kid-fg: #1f2a44;
+    --kid-fg-soft: #4a5578;
+    --kid-primary: #5148d6;
+    --kid-primary-hover: #4038c0;
+    --kid-primary-fg: #ffffff;
+    --kid-primary-shadow: #3a31a8;
+    /* Text links (on light surfaces the brand colour itself). */
+    --kid-link: #5148d6;
+    --kid-success: #237336;
+    --kid-success-bg: #e7f7ea;
+    --kid-danger: #b42318;
+    --kid-danger-bg: #fdecea;
+    --kid-warning-bg: #fff4d6;
+    --kid-focus: #5148d6;
+    --kid-shadow: rgb(31 42 68 / 0.13);
+    --kid-bg-from: var(--kit-light-from, #c9e8ff);
+    --kid-bg-mid: var(--kit-light-mid, #e6f3ff);
+    --kid-bg-to: var(--kit-light-to, #f6f3ff);
+    --kit-accent: var(--kit-accent-custom, var(--kit-accent-preset, #5148d6));
+    --kit-accent-fg: #ffffff;
+    --kit-accent-shadow: color-mix(in oklch, var(--kit-accent), black 28%);
+
+    color-scheme: light;
+    color: var(--kid-fg);
+    font-family: var(--font-kid);
+    background: linear-gradient(
+      180deg,
+      var(--kid-bg-from) 0%,
+      var(--kid-bg-mid) 55%,
+      var(--kid-bg-to) 100%
+    );
+    background-attachment: fixed;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .kasif[data-font='standard'] {
+    font-family: var(--font-sans);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .kasif:not([data-theme='light']) {
+      --kid-surface: #231f5c;
+      --kid-surface-2: #2c2870;
+      --kid-border: #3a3589;
+      --kid-control-border: #8f89d9;
+      --kid-fg: #f4f3ff;
+      --kid-fg-soft: #c9c6f2;
+      --kid-primary: #5a51e6;
+      --kid-primary-hover: #4d44d8;
+      --kid-primary-shadow: #2e2690;
+      --kid-link: #b4aeff;
+      --kid-success: #8fe0a0;
+      --kid-success-bg: #173d24;
+      --kid-danger: #ffb4a9;
+      --kid-danger-bg: #4a1712;
+      --kid-warning-bg: #4a3a10;
+      --kid-focus: #ffd653;
+      --kid-shadow: rgb(5 4 26 / 0.45);
+      --kid-bg-from: var(--kit-dark-from, #2a2575);
+      --kid-bg-mid: var(--kit-dark-mid, #1e1b54);
+      --kid-bg-to: var(--kit-dark-to, #0d0b2e);
+      color-scheme: dark;
+    }
+  }
+
+  .kasif[data-theme='dark'] {
+    --kid-surface: #231f5c;
+    --kid-surface-2: #2c2870;
+    --kid-border: #3a3589;
+    --kid-control-border: #8f89d9;
+    --kid-fg: #f4f3ff;
+    --kid-fg-soft: #c9c6f2;
+    --kid-primary: #5a51e6;
+    --kid-primary-hover: #4d44d8;
+    --kid-primary-shadow: #2e2690;
+    --kid-link: #b4aeff;
+    --kid-success: #8fe0a0;
+    --kid-success-bg: #173d24;
+    --kid-danger: #ffb4a9;
+    --kid-danger-bg: #4a1712;
+    --kid-warning-bg: #4a3a10;
+    --kid-focus: #ffd653;
+    --kid-shadow: rgb(5 4 26 / 0.45);
+    --kid-bg-from: var(--kit-dark-from, #2a2575);
+    --kid-bg-mid: var(--kit-dark-mid, #1e1b54);
+    --kid-bg-to: var(--kit-dark-to, #0d0b2e);
+    color-scheme: dark;
+  }
+
+  /* Kit theme presets: sky tint (light + dark) and accent. */
+  [data-kit-theme='meadow'] {
+    --kit-light-from: #bde9ff;
+    --kit-light-mid: #e3f7f0;
+    --kit-light-to: #f3fbef;
+    --kit-dark-from: #123a3a;
+    --kit-dark-mid: #0f2a2c;
+    --kit-dark-to: #081a1c;
+    --kit-accent-preset: #2f8545;
+  }
+  [data-kit-theme='space'] {
+    --kit-light-from: #d9d6ff;
+    --kit-light-mid: #ebe9ff;
+    --kit-light-to: #f7f6ff;
+    --kit-dark-from: #2a2575;
+    --kit-dark-mid: #1e1b54;
+    --kit-dark-to: #0d0b2e;
+    --kit-accent-preset: #5249d8;
+  }
+  [data-kit-theme='ocean'] {
+    --kit-light-from: #bfe6ff;
+    --kit-light-mid: #e0f3ff;
+    --kit-light-to: #f2faff;
+    --kit-dark-from: #0f3357;
+    --kit-dark-mid: #0b2540;
+    --kit-dark-to: #06172a;
+    --kit-accent-preset: #1c70b5;
+  }
+  [data-kit-theme='sunset'] {
+    --kit-light-from: #ffd9b8;
+    --kit-light-mid: #ffebd9;
+    --kit-light-to: #fff7ef;
+    --kit-dark-from: #4a2414;
+    --kit-dark-mid: #33180d;
+    --kit-dark-to: #1c0d07;
+    --kit-accent-preset: #c0560d;
+  }
+  [data-kit-theme='candy'] {
+    --kit-light-from: #ffd3e6;
+    --kit-light-mid: #ffe6f1;
+    --kit-light-to: #fff5fa;
+    --kit-dark-from: #4a1240;
+    --kit-dark-mid: #330c2c;
+    --kit-dark-to: #1c0618;
+    --kit-accent-preset: #c0336b;
+  }
+
+  /* Card colors (menu cards, options, hotspots). */
+  [data-card-color] {
+    --cc-fg: #ffffff;
+  }
+  [data-card-color='green'] {
+    --cc-from: #2f8545;
+    --cc-to: #237336;
+    --cc-shadow: #17552a;
+  }
+  [data-card-color='lime'] {
+    --cc-from: #4a7f1f;
+    --cc-to: #3b6a14;
+    --cc-shadow: #2a4d0d;
+  }
+  [data-card-color='orange'] {
+    --cc-from: #c0560d;
+    --cc-to: #a2470a;
+    --cc-shadow: #7a3507;
+  }
+  [data-card-color='yellow'] {
+    --cc-from: #ffc93e;
+    --cc-to: #f4a91f;
+    --cc-shadow: #c98a10;
+    --cc-fg: #3d2a00;
+  }
+  [data-card-color='sky'] {
+    --cc-from: #1c70b5;
+    --cc-to: #155c97;
+    --cc-shadow: #0f4470;
+  }
+  [data-card-color='purple'] {
+    --cc-from: #7a4cc2;
+    --cc-to: #62399f;
+    --cc-shadow: #472977;
+  }
+  [data-card-color='pink'] {
+    --cc-from: #c0336b;
+    --cc-to: #a12857;
+    --cc-shadow: #781d41;
+  }
+  [data-card-color='indigo'] {
+    --cc-from: #5249d8;
+    --cc-to: #3f37b0;
+    --cc-shadow: #2e2885;
+  }
+}
+
+@layer components {
+  /* Colored, raised card surface (E-B-M menu cards, answer options, hotspots). */
+  .kid-color-card {
+    background: linear-gradient(150deg, var(--cc-from), var(--cc-to));
+    color: var(--cc-fg);
+    box-shadow:
+      0 6px 0 var(--cc-shadow),
+      0 12px 24px var(--kid-shadow);
+  }
+  .kid-color-card:active {
+    box-shadow:
+      0 2px 0 var(--cc-shadow),
+      0 6px 12px var(--kid-shadow);
+  }
+
+  .kid-focus {
+    outline: 3px solid transparent;
+    outline-offset: 3px;
+  }
+  .kid-focus:focus-visible {
+    outline-color: var(--kid-focus);
+  }
+
+  /* Ambient decoration that motion settings can switch off. */
+  .kid-ambient {
+    animation-play-state: running;
+  }
+}
+
+/* Motion levels: kit theme ("sakin", "minimal"), explorer setting or OS reduced motion. */
+.kasif[data-motion='calm'] .kid-ambient,
+.kasif[data-motion='calm'] .kid-ambient * {
+  animation: none !important;
+}
+.kasif[data-motion='minimal'] *,
+.kasif[data-motion='minimal'] *::before,
+.kasif[data-motion='minimal'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+@keyframes kid-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes kid-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+@keyframes kid-sway {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes kid-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes kid-wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes kid-drift {
+  from {
+    transform: translateX(-20vw);
+  }
+  to {
+    transform: translateX(120vw);
+  }
+}
+@keyframes kid-confetti-fall {
+  to {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0.9;
+  }
+}
+@keyframes kid-cheer {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+  }
+  18% {
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  80% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.9);
+    opacity: 0;
+  }
+}
+@keyframes kid-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+@keyframes kid-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes kid-rise {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-190px);
+    opacity: 0;
+  }
+}
+@keyframes kid-steam {
+  0% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(-14px);
+    opacity: 0;
+  }
+}
+@keyframes kid-grow-up {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes kid-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
+/* Confetti palette and day/night-only decoration. */
+.kasif {
+  --confetti-1: #3fa34d;
+  --confetti-2: #ffd653;
+  --confetti-3: #ff9f43;
+  --confetti-4: #4fb6e8;
+  --confetti-5: #f27da6;
+  --confetti-6: #a46fd8;
+}
+.kasif .kid-night-only {
+  display: none;
+}
+@media (prefers-color-scheme: dark) {
+  .kasif:not([data-theme='light']) .kid-day-only {
+    display: none;
+  }
+  .kasif:not([data-theme='light']) .kid-night-only {
+    display: block;
+  }
+}
+.kasif[data-theme='dark'] .kid-day-only {
+  display: none;
+}
+.kasif[data-theme='dark'] .kid-night-only {
+  display: block;
+}
+
+/* Stage slider (E-B-M growth slider): chunky track + 40 px thumb, visible focus. */
+.kid-range {
+  height: 2.75rem;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.kid-range::-webkit-slider-runnable-track {
+  height: 1rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8a5a3b, #6bc96f, #2f8545);
+}
+.kid-range::-moz-range-track {
+  height: 1rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8a5a3b, #6bc96f, #2f8545);
+}
+.kid-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-top: -0.75rem;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 5px solid #2f8545;
+  box-shadow: 0 4px 12px var(--kid-shadow);
+}
+.kid-range::-moz-range-thumb {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 5px solid #2f8545;
+  box-shadow: 0 4px 12px var(--kid-shadow);
+}
+
+/* Comparison cards: soft tinted surfaces (AA text in both themes). */
+.kid-compare-card[data-tone='warm'] {
+  background: #fbefdd;
+  color: #4a2f10;
+}
+.kid-compare-card[data-tone='fresh'] {
+  background: #e7f7e4;
+  color: #173d1b;
+}
+.kid-compare-card[data-tone='cool'] {
+  background: #e3f1fc;
+  color: #0f3150;
+}
+@media (prefers-color-scheme: dark) {
+  .kasif:not([data-theme='light']) .kid-compare-card[data-tone='warm'] {
+    background: #4a3218;
+    color: #fde9cf;
+  }
+  .kasif:not([data-theme='light']) .kid-compare-card[data-tone='fresh'] {
+    background: #1d4424;
+    color: #dcf5d8;
+  }
+  .kasif:not([data-theme='light']) .kid-compare-card[data-tone='cool'] {
+    background: #16395a;
+    color: #d8ecfb;
+  }
+}
+.kasif[data-theme='dark'] .kid-compare-card[data-tone='warm'] {
+  background: #4a3218;
+  color: #fde9cf;
+}
+.kasif[data-theme='dark'] .kid-compare-card[data-tone='fresh'] {
+  background: #1d4424;
+  color: #dcf5d8;
+}
+.kasif[data-theme='dark'] .kid-compare-card[data-tone='cool'] {
+  background: #16395a;
+  color: #d8ecfb;
+}
+
+/* Kit tiles inside the app carry their own theme accent (the root computes the page accent). */
+.kasif [data-kit-theme] {
+  --kit-accent: var(--kit-accent-preset, #5148d6);
+}
+
+/* Kâşif card: avatar-colored gradient, white text ≥ 4.5:1. */
+.kid-explorer-card {
+  background: linear-gradient(135deg, var(--card-from, #3b3486), var(--card-to, #1e1b54));
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+.kid-explorer-card[data-avatar='teal'] {
+  --card-from: #0e6f6a;
+  --card-to: #0b4f4a;
+}
+.kid-explorer-card[data-avatar='sun'] {
+  --card-from: #9a5705;
+  --card-to: #6f3f03;
+}
+.kid-explorer-card[data-avatar='coral'] {
+  --card-from: #b5423c;
+  --card-to: #86302b;
+}
+.kid-explorer-card[data-avatar='leaf'] {
+  --card-from: #2c7a40;
+  --card-to: #17552a;
+}
+.kid-explorer-card[data-avatar='berry'] {
+  --card-from: #6a3fb0;
+  --card-to: #472977;
+}
+
+/* Printing from Kâşif prints only the element marked data-printable (card, certificate). */
+@media print {
+  .kasif {
+    background: #ffffff !important;
+  }
+  .kasif * {
+    visibility: hidden;
+  }
+  .kasif [data-printable],
+  .kasif [data-printable] * {
+    visibility: visible;
+  }
+  .kasif [data-printable] {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    box-shadow: none !important;
+  }
+}
+
+.kid-certificate {
+  background: linear-gradient(135deg, #2a2575, #0d0b2e);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}

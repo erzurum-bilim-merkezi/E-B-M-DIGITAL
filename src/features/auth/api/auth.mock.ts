@@ -24,6 +24,11 @@ const MAX_FAILED_SIGN_INS = 5
 const LOCK_MS = 15 * 60 * 1000
 const TEMP_PASSWORD_TTL_MS = 72 * 60 * 60 * 1000
 const PBKDF2_ITERATIONS = 20_000
+/** Salt for the throwaway hash of an unknown e-mail: every sign-in costs one PBKDF2 run. */
+const UNKNOWN_USER_SALT = 'kasif-unknown-user'
+const SIGN_IN_BUCKET = 'staff-sign-in'
+const INVALID_SIGN_IN = 'E-posta ya da parola hatalı.'
+const SIGN_IN_LOCKED = 'Çok fazla hatalı deneme yapıldı. 15 dakika sonra tekrar deneyin.'
 
 const credentialSchema = z.object({
   userId: z.uuid(),
@@ -50,6 +55,56 @@ type StoredSession = z.infer<typeof storedSessionSchema>
 
 export const staffUsers = mockTable(MOCK_TABLES.staffUsers, staffUserSchema)
 const credentials = mockTable(MOCK_TABLES.staffCredentials, credentialSchema)
+/** Failed sign-ins of e-mails without an account, so they lock exactly like real accounts. */
+const unknownSignIns = mockTable(
+  MOCK_TABLES.rateLimits,
+  z.object({ bucket: z.string(), subject: z.string(), windowStart: z.string(), count: z.int() }),
+)
+
+function unknownSignInRow(email: string) {
+  return unknownSignIns.find((row) => row.bucket === SIGN_IN_BUCKET && row.subject === email)
+}
+
+/** Same rule as a credential's `lockedUntil`: the 5th failure locks for 15 minutes. */
+function unknownSignInLocked(email: string) {
+  const row = unknownSignInRow(email)
+  return (
+    row !== undefined &&
+    row.count >= MAX_FAILED_SIGN_INS &&
+    Date.now() - Date.parse(row.windowStart) < LOCK_MS
+  )
+}
+
+function recordUnknownSignInFailure(email: string) {
+  const row = unknownSignInRow(email)
+  // After an expired lock the count starts over, like a credential's `failedAttempts`.
+  const previous = row && row.count < MAX_FAILED_SIGN_INS ? row.count : 0
+  unknownSignIns.upsert(
+    {
+      bucket: SIGN_IN_BUCKET,
+      subject: email,
+      windowStart: new Date().toISOString(),
+      count: previous + 1,
+    },
+    (entry) => `${entry.bucket}:${entry.subject}`,
+  )
+}
+
+/** A wrong password (sign-in or current-password check): the 5th failure locks for 15 minutes. */
+function recordPasswordFailure(userId: string) {
+  credentials.update(
+    (row) => row.userId === userId,
+    (row) => {
+      const failedAttempts = row.failedAttempts + 1
+      const locks = failedAttempts >= MAX_FAILED_SIGN_INS
+      return {
+        ...row,
+        failedAttempts: locks ? 0 : failedAttempts,
+        lockedUntil: locks ? new Date(Date.now() + LOCK_MS).toISOString() : null,
+      }
+    },
+  )
+}
 
 function toHex(bytes: Uint8Array) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -194,29 +249,22 @@ export function createMockAuthService(): AuthService {
       await mockGate('auth.signIn')
       const normalized = email.trim().toLowerCase()
       const user = staffUsers.find((candidate) => candidate.email.toLowerCase() === normalized)
-      const invalid = new AppError('unauthorized', 'E-posta ya da parola hatalı.')
-      if (!user) throw invalid
+      const invalid = new AppError('unauthorized', INVALID_SIGN_IN)
+      if (!user) {
+        // No enumeration: an unknown e-mail costs the same hash, gets the same answer and locks
+        // after the same number of failures as a wrong password for a real account.
+        if (unknownSignInLocked(normalized)) throw new AppError('rate_limited', SIGN_IN_LOCKED)
+        await hashPassword(password, UNKNOWN_USER_SALT)
+        recordUnknownSignInFailure(normalized)
+        throw invalid
+      }
       const credential = credentialOf(user.id)
       if (credential.lockedUntil && Date.parse(credential.lockedUntil) > Date.now()) {
-        throw new AppError(
-          'rate_limited',
-          'Çok fazla hatalı deneme yapıldı. 15 dakika sonra tekrar deneyin.',
-        )
+        throw new AppError('rate_limited', SIGN_IN_LOCKED)
       }
       const hash = await hashPassword(password, credential.salt)
       if (hash !== credential.passwordHash) {
-        const failedAttempts = credential.failedAttempts + 1
-        credentials.update(
-          (row) => row.userId === user.id,
-          (row) => ({
-            ...row,
-            failedAttempts: failedAttempts >= MAX_FAILED_SIGN_INS ? 0 : failedAttempts,
-            lockedUntil:
-              failedAttempts >= MAX_FAILED_SIGN_INS
-                ? new Date(Date.now() + LOCK_MS).toISOString()
-                : null,
-          }),
-        )
+        recordPasswordFailure(user.id)
         throw invalid
       }
       if (!user.active)
@@ -335,12 +383,26 @@ export function createMockAuthService(): AuthService {
       return nextStep({ user, aal: 'aal2', expiresAt: stored.expiresAt }, credentialOf(user.id))
     },
 
-    async changePassword(newPassword) {
+    async changePassword({ newPassword, currentPassword }) {
       await mockGate('auth.changePassword')
       const { stored, session } = requireStored()
       // An admin's password changes only with the second factor verified (aal2).
       if (session.user.role === 'admin' && stored.aal !== 'aal2') {
         throw new AppError('forbidden', 'Önce iki adımlı doğrulamayı tamamlayın.')
+      }
+      // A voluntary change needs the current password: an unattended session alone must not
+      // take the account over. The forced change after a temporary password is exempt.
+      // Wrong guesses share the sign-in lockout, so the session cannot brute-force it.
+      if (!session.user.mustChangePassword) {
+        const credential = credentialOf(session.user.id)
+        if (credential.lockedUntil && Date.parse(credential.lockedUntil) > Date.now()) {
+          throw new AppError('rate_limited', SIGN_IN_LOCKED)
+        }
+        const hash = await hashPassword(currentPassword ?? '', credential.salt)
+        if (hash !== credential.passwordHash) {
+          recordPasswordFailure(session.user.id)
+          throw new AppError('validation', 'Mevcut parola hatalı.')
+        }
       }
       const problem = checkPassword(newPassword)
       if (problem) throw new AppError('validation', PASSWORD_MESSAGES[problem])
@@ -348,7 +410,14 @@ export function createMockAuthService(): AuthService {
       const passwordHash = await hashPassword(newPassword, salt)
       credentials.update(
         (row) => row.userId === session.user.id,
-        (row) => ({ ...row, salt, passwordHash, tempPasswordExpiresAt: null }),
+        (row) => ({
+          ...row,
+          salt,
+          passwordHash,
+          tempPasswordExpiresAt: null,
+          failedAttempts: 0,
+          lockedUntil: null,
+        }),
       )
       const user =
         staffUsers.update(

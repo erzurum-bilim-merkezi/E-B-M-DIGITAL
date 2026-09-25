@@ -9,12 +9,26 @@ import { Alert, Button, Field, Input } from '@/shared/ui'
 
 import { authService, type SignInResult } from '../api'
 
-export function ChangePasswordForm({ onResult }: { onResult: (result: SignInResult) => void }) {
+type FieldErrors = { current?: string; password?: string; confirm?: string }
+
+export function ChangePasswordForm({
+  onResult,
+  requireCurrent,
+}: {
+  onResult: (result: SignInResult) => void
+  /** Ask for the current password (every change except the forced one after a temporary password). */
+  requireCurrent: boolean
+}) {
+  const [current, setCurrent] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({})
+  const [errors, setErrors] = useState<FieldErrors>({})
   const change = useMutation({
-    mutationFn: () => authService.changePassword(password),
+    mutationFn: () =>
+      authService.changePassword({
+        newPassword: password,
+        currentPassword: requireCurrent ? current : undefined,
+      }),
     onSuccess: onResult,
   })
 
@@ -27,16 +41,27 @@ export function ChangePasswordForm({ onResult }: { onResult: (result: SignInResu
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const problem = checkPassword(password)
-    const next: { password?: string; confirm?: string } = {}
+    const next: FieldErrors = {}
+    if (requireCurrent && current === '') next.current = 'Mevcut parolanızı girin.'
     if (problem) next.password = PASSWORD_MESSAGES[problem]
     if (!problem && password !== confirm) next.confirm = 'Parolalar eşleşmiyor.'
     setErrors(next)
-    if (!next.password && !next.confirm) change.mutate()
+    if (!next.current && !next.password && !next.confirm) change.mutate()
   }
 
   return (
     <form noValidate onSubmit={submit} className="flex flex-col gap-5">
       {change.isError && <Alert variant="danger">{errorMessage(change.error)}</Alert>}
+      {requireCurrent && (
+        <Field label="Mevcut parola" error={errors.current} required>
+          <Input
+            type="password"
+            autoComplete="current-password"
+            value={current}
+            onChange={(event) => setCurrent(event.target.value)}
+          />
+        </Field>
+      )}
       <Field label="Yeni parola" error={errors.password} required>
         <Input
           type="password"

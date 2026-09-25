@@ -173,6 +173,8 @@ export function createMockKitRepository(): KitRepository {
       await mockGate('kits.list')
       requireStaff()
       const needle = filter.query.trim().toLocaleLowerCase('tr')
+      // Prefixes are ASCII A–Z: Turkish casing would turn "BIO" into "bıo" and miss them.
+      const prefix = filter.query.trim().toUpperCase()
       const rows = kitsTable
         .filter((kit) => filter.status === 'all' || kit.status === filter.status)
         .filter(
@@ -180,7 +182,7 @@ export function createMockKitRepository(): KitRepository {
             !needle ||
             kit.draft.title.toLocaleLowerCase('tr').includes(needle) ||
             kit.slug.includes(needle) ||
-            kit.qrPrefix.toLowerCase() === needle.toLowerCase(),
+            kit.qrPrefix === prefix,
         )
         .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       const pageCount = Math.max(1, Math.ceil(rows.length / filter.pageSize))

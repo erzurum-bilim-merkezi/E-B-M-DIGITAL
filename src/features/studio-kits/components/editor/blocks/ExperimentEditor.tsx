@@ -5,7 +5,7 @@ import { newItemId, type MediaRef, type StepOf } from '@/entities/kit'
 import { fieldId } from '../field-id'
 import { ItemListEditor, NumberField, StringListField, TextField } from '../fields'
 import { useEditorServices } from '../editor-services'
-import { itemName } from './list-items'
+import { blankItemError, itemName } from './list-items'
 import type { BlockEditorProps } from './types'
 
 type ExperimentItem = StepOf<'experiment'>['steps'][number]
@@ -40,6 +40,7 @@ function EditorSection({
 
 export function ExperimentEditor({ step, onChange, issueFor }: BlockEditorProps<'experiment'>) {
   const { ImageField } = useEditorServices()
+  const stepsIssue = issueFor('steps')
 
   return (
     <div className="flex flex-col gap-5">
@@ -56,6 +57,7 @@ export function ExperimentEditor({ step, onChange, issueFor }: BlockEditorProps<
           maxLength={60}
           placeholder="ör. Şeffaf bardak"
           addLabel="Malzeme ekle"
+          error={issueFor('materials')}
         />
         <StringListField
           id={fieldId(step.id, 'safety')}
@@ -66,6 +68,7 @@ export function ExperimentEditor({ step, onChange, issueFor }: BlockEditorProps<
           maxLength={120}
           placeholder="ör. Deneyi bir yetişkinle yap."
           addLabel="Güvenlik notu ekle"
+          error={issueFor('safety')}
         />
       </EditorSection>
 
@@ -83,7 +86,7 @@ export function ExperimentEditor({ step, onChange, issueFor }: BlockEditorProps<
           max={10}
           create={(): ExperimentItem => ({ id: newItemId('e'), text: '', timerSec: 0 })}
           addLabel="Adım ekle"
-          error={issueFor('steps')}
+          error={stepsIssue}
           itemLabel={(item, index) => itemName(item.text, `Adım ${index + 1}`, 32)}
           renderItem={(item, update) => (
             <div className="flex flex-col gap-4">
@@ -96,6 +99,7 @@ export function ExperimentEditor({ step, onChange, issueFor }: BlockEditorProps<
                 multiline
                 rows={2}
                 required
+                error={blankItemError(stepsIssue, item.text, 'Adım metni gerekli.')}
                 placeholder="ör. Bardağa su doldur ve birkaç damla boya ekle."
               />
               <NumberField

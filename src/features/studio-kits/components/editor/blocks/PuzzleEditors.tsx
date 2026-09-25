@@ -3,7 +3,7 @@ import { newItemId, type StepOf } from '@/entities/kit'
 import { fieldId } from '../field-id'
 import { ItemListEditor, TextField } from '../fields'
 import { BlockEmojiField } from './block-fields'
-import { itemName } from './list-items'
+import { blankItemError, itemName } from './list-items'
 import type { BlockEditorProps } from './types'
 
 type SequenceItem = StepOf<'sequence'>['items'][number]
@@ -16,6 +16,7 @@ function pairName(pair: MatchingPair, index: number) {
 }
 
 export function SequenceEditor({ step, onChange, issueFor }: BlockEditorProps<'sequence'>) {
+  const itemsIssue = issueFor('items')
   return (
     <div className="flex flex-col gap-5">
       <TextField
@@ -34,10 +35,10 @@ export function SequenceEditor({ step, onChange, issueFor }: BlockEditorProps<'s
         items={step.items}
         onChange={(items) => onChange({ ...step, items })}
         min={3}
-        max={6}
+        max={8}
         create={(): SequenceItem => ({ id: newItemId('s'), label: '', icon: '✨' })}
         addLabel="Adım ekle"
-        error={issueFor('items')}
+        error={itemsIssue}
         itemLabel={(item, index) => itemName(item.label, `Adım ${index + 1}`)}
         renderItem={(item, update) => (
           <div className="grid items-start gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -48,6 +49,7 @@ export function SequenceEditor({ step, onChange, issueFor }: BlockEditorProps<'s
               onChange={(label) => update({ ...item, label })}
               max={40}
               required
+              error={blankItemError(itemsIssue, item.label, 'Adım adı gerekli.')}
               placeholder="ör. Çimlenme"
             />
             <BlockEmojiField
@@ -72,6 +74,7 @@ export function SequenceEditor({ step, onChange, issueFor }: BlockEditorProps<'s
 }
 
 export function MatchingEditor({ step, onChange, issueFor }: BlockEditorProps<'matching'>) {
+  const pairsIssue = issueFor('pairs')
   return (
     <div className="flex flex-col gap-5">
       <TextField
@@ -93,7 +96,7 @@ export function MatchingEditor({ step, onChange, issueFor }: BlockEditorProps<'m
         max={5}
         create={(): MatchingPair => ({ id: newItemId('p'), left: '', right: '' })}
         addLabel="Eş ekle"
-        error={issueFor('pairs')}
+        error={pairsIssue}
         itemLabel={pairName}
         renderItem={(pair, update) => (
           <div className="grid items-start gap-4 sm:grid-cols-2">
@@ -104,6 +107,7 @@ export function MatchingEditor({ step, onChange, issueFor }: BlockEditorProps<'m
               onChange={(left) => update({ ...pair, left })}
               max={40}
               required
+              error={blankItemError(pairsIssue, pair.left, 'Sol kart gerekli.')}
               placeholder="ör. Kök"
             />
             <TextField
@@ -113,6 +117,7 @@ export function MatchingEditor({ step, onChange, issueFor }: BlockEditorProps<'m
               onChange={(right) => update({ ...pair, right })}
               max={40}
               required
+              error={blankItemError(pairsIssue, pair.right, 'Sağ kart gerekli.')}
               placeholder="ör. Suyu emer"
             />
           </div>

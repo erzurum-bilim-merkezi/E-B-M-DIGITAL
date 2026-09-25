@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   createDefaultStep,
   kitDocumentSchema,
+  MAX_KIT_STEPS,
   newStepId,
   nextQrCode,
   uniqueSlug,
@@ -351,14 +352,30 @@ export function useKitDraft(kit: StudioKit) {
     [update],
   )
 
+  /**
+   * Puts a removed card back (undo). Returns false when it cannot: the card is still there or
+   * the kit is full. A card added meanwhile may have taken its address; the restored card then
+   * gets a free one, so the draft stays saveable.
+   */
   const restoreStep = useCallback(
-    (step: Step, index: number) =>
+    (step: Step, index: number): boolean => {
+      const cannotRestore = (candidate: KitDocument) =>
+        candidate.steps.some((existing) => existing.id === step.id) ||
+        candidate.steps.length >= MAX_KIT_STEPS
+      if (cannotRestore(draftRef.current)) return false
+      // Re-checked on the latest draft: another update may be queued in the same tick.
       update((current) => {
-        if (current.steps.some((existing) => existing.id === step.id)) return current
+        if (cannotRestore(current)) return current
+        const slugs = new Set(current.steps.map((existing) => existing.slug))
+        const restored = slugs.has(step.slug)
+          ? { ...step, slug: uniqueSlug(step.slug, slugs) }
+          : step
         const steps = [...current.steps]
-        steps.splice(Math.min(index, steps.length), 0, step)
+        steps.splice(Math.min(index, steps.length), 0, restored)
         return { ...current, steps }
-      }),
+      })
+      return true
+    },
     [update],
   )
 

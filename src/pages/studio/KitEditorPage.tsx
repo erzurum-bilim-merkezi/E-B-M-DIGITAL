@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { suggestQrPrefix, uniqueSlug, type KitDocument } from '@/entities/kit'
@@ -18,6 +19,8 @@ import { Button, Card, EmptyState, Skeleton, toast } from '@/shared/ui'
 
 import { useComposedEditorServices } from './components/useEditorServices'
 
+type EditorView = { tab: EditorTabId; stepId: string | null }
+
 function parseTab(value: string | null): EditorTabId {
   return EDITOR_TABS.find((tab) => tab === value) ?? 'genel'
 }
@@ -32,8 +35,15 @@ export function KitEditorPage() {
   const takenPrefixes = useQuery(takenQrPrefixesQueryOptions())
   const createKit = useCreateKit()
   const services = useComposedEditorServices()
-  const tab = parseTab(params.get('sekme'))
-  const stepId = params.get('kart')
+  const urlView: EditorView = { tab: parseTab(params.get('sekme')), stepId: params.get('kart') }
+  const urlKey = `${urlView.tab}|${urlView.stepId ?? ''}`
+  // The URL keeps the tab and card, but router navigations render in a transition that typing
+  // keeps interrupting: text typed right after "Kart ekle" could land in the previous card. The
+  // view switches at once (urgent update) and the URL follows; once the URL moves (our own
+  // navigation or back/forward), it is the source of truth again.
+  const [pending, setPending] = useState<{ view: EditorView; fromUrl: string } | null>(null)
+  if (pending && pending.fromUrl !== urlKey) setPending(null)
+  const { tab, stepId } = pending && pending.fromUrl === urlKey ? pending.view : urlView
 
   const onNavigate = ({
     tab: nextTab,
@@ -42,13 +52,16 @@ export function KitEditorPage() {
     tab?: EditorTabId
     stepId?: string | null
   }) => {
-    const next = new URLSearchParams(params)
-    if (nextTab) next.set('sekme', nextTab)
-    if (nextStep !== undefined) {
-      if (nextStep) next.set('kart', nextStep)
-      else next.delete('kart')
-      if (!nextTab) next.set('sekme', 'kartlar')
+    // Choosing a card also opens the cards tab.
+    const view: EditorView = {
+      tab: nextTab ?? (nextStep === undefined ? tab : 'kartlar'),
+      stepId: nextStep === undefined ? stepId : nextStep,
     }
+    setPending({ view, fromUrl: urlKey })
+    const next = new URLSearchParams(params)
+    next.set('sekme', view.tab)
+    if (view.stepId) next.set('kart', view.stepId)
+    else next.delete('kart')
     setParams(next, { replace: true })
   }
 

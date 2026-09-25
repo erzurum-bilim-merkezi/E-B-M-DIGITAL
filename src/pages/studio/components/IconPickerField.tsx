@@ -3,6 +3,7 @@ import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import {
+  emojiSchema,
   LIBRARY_ICON_META,
   searchLibraryIcons,
   type CardColor,
@@ -60,8 +61,28 @@ const EMOJI_SETS: { label: string; keywords: string; emojis: readonly string[] }
   },
   {
     label: 'Uzay',
-    keywords: 'uzay gezegen yıldız roket dünya ay astronot',
-    emojis: ['🚀', '🪐', '🌍', '🌎', '🌕', '🌑', '☄️', '🛰️', '🔭', '👩‍🚀', '👽', '✨'],
+    keywords: 'uzay gezegen yıldız roket dünya ay astronot güneş mars galaksi',
+    emojis: [
+      '🚀',
+      '🪐',
+      '🌍',
+      '🌎',
+      '🌕',
+      '🌙',
+      '🌑',
+      '☀️',
+      '🔴',
+      '⭐',
+      '🌟',
+      '☄️',
+      '🌌',
+      '🛰️',
+      '🔭',
+      '👩‍🚀',
+      '🧑‍🚀',
+      '👽',
+      '✨',
+    ],
   },
   {
     label: 'Bilim',
@@ -115,6 +136,53 @@ const EMOJI_SETS: { label: string; keywords: string; emojis: readonly string[] }
     ],
   },
 ]
+
+/** A single emoji (pictographic, no spaces) — the schema alone would also accept plain words. */
+function isSingleEmoji(value: string) {
+  return emojiSchema.safeParse(value).success && /\p{Extended_Pictographic}/u.test(value)
+}
+
+/** Any emoji the sets lack (🔴, 💍 …), typed or pasted from the system emoji keyboard. */
+function CustomEmojiField({ onPick }: { onPick: (emoji: string) => void }) {
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const apply = () => {
+    const emoji = text.trim()
+    if (!isSingleEmoji(emoji)) {
+      setError('Tek bir emoji yazın ya da yapıştırın.')
+      return
+    }
+    onPick(emoji)
+  }
+  return (
+    <Field label="Başka bir emoji" error={error ?? undefined}>
+      {(control) => (
+        <div className="flex gap-2">
+          <Input
+            {...control}
+            value={text}
+            maxLength={16}
+            placeholder="ör. 💍"
+            className="w-24 text-center text-lg"
+            onChange={(event) => {
+              setText(event.target.value)
+              setError(null)
+            }}
+            onKeyDown={(event) => {
+              // The picker sits inside the editor: Enter must not submit an outer form.
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              apply()
+            }}
+          />
+          <Button variant="secondary" onClick={apply}>
+            Kullan
+          </Button>
+        </div>
+      )}
+    </Field>
+  )
+}
 
 type IconPickerFieldProps = {
   id: string
@@ -252,10 +320,11 @@ export function IconPickerField({ id, label, value, onChange, tint }: IconPicker
                 </div>
               ))}
               {emojiSets.length === 0 && (
-                <p className="text-sm text-fg-muted">
-                  Eşleşen grup yok. “Bilim ikonları” sekmesine bakın.
+                <p className="mb-3 text-sm text-fg-muted">
+                  Eşleşen grup yok. Aşağıya emojiyi yazın ya da “Bilim ikonları” sekmesine bakın.
                 </p>
               )}
+              <CustomEmojiField onPick={(emoji) => pick({ kind: 'emoji', value: emoji })} />
             </TabsContent>
             <TabsContent value="library" className="max-h-72 overflow-y-auto p-3">
               <div

@@ -1,7 +1,13 @@
 import { Eye, Smartphone, Tablet, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
-import { canRenameKit, type KitIssue, type Step, type StudioKit } from '@/entities/kit'
+import {
+  canRenameKit,
+  MAX_KIT_STEPS,
+  type KitIssue,
+  type Step,
+  type StudioKit,
+} from '@/entities/kit'
 import {
   Alert,
   Button,
@@ -19,13 +25,14 @@ import { StepEditor } from './StepEditor'
 import { AddStepMenu, StepList } from './StepList'
 import type { KitDraftController } from './useKitDraft'
 
-const MAX_STEPS = 30
 /** Focus target after the last card is removed: the "Kart ekle" button. */
 const ADD_BUTTON = Symbol('add-button')
 
 type RemovedStep = { step: Step; index: number }
 
 const stepTitle = (step: Step) => step.title || 'Adsız kart'
+
+const KIT_FULL_MESSAGE = `Kit ${MAX_KIT_STEPS} kartla dolu; geri almak için önce bir kart silin.`
 
 function PreviewPanel({
   controller,
@@ -82,12 +89,14 @@ export function CardsTab({
   // The last removal stays undoable on the page, not only in a toast (WCAG 2.2.1, 3.3.4).
   const [lastRemoved, setLastRemoved] = useState<RemovedStep | null>(null)
   const toastId = useId()
+  const fullNoteId = useId()
   const listPanel = useRef<HTMLElement>(null)
   const addButton = useRef<HTMLButtonElement>(null)
   // Where focus goes once the list has re-rendered: a card id or ADD_BUTTON (WCAG 2.4.3).
   const pendingFocus = useRef<string | typeof ADD_BUTTON | null>(null)
   const { draft } = controller
   const selected = draft.steps.find((step) => step.id === selectedId) ?? draft.steps[0] ?? null
+  const kitFull = draft.steps.length >= MAX_KIT_STEPS
 
   useEffect(() => {
     const target = pendingFocus.current
@@ -111,7 +120,11 @@ export function CardsTab({
 
   /** `focusCard`: move focus to the restored card (the toast hands focus back by itself). */
   const undo = (removed: RemovedStep, focusCard: boolean) => {
-    controller.restoreStep(removed.step, removed.index)
+    if (!controller.restoreStep(removed.step, removed.index)) {
+      // Cards added since the removal filled the kit; the inline notice stays for a later undo.
+      toast.error(KIT_FULL_MESSAGE)
+      return
+    }
     onSelect(removed.step.id)
     setLastRemoved(null)
     toast.dismiss(toastId)
@@ -154,7 +167,7 @@ export function CardsTab({
       >
         <AddStepMenu
           ref={addButton}
-          disabled={draft.steps.length >= MAX_STEPS}
+          disabled={kitFull}
           onAdd={(type) => {
             const created = controller.addStep(type)
             if (created) onSelect(created.id)
@@ -167,7 +180,16 @@ export function CardsTab({
             className="p-3"
             action={
               <div className="flex items-center gap-1">
-                <Button size="sm" variant="secondary" onClick={() => undo(lastRemoved, true)}>
+                {/* aria-disabled, not disabled: it stays focusable, so the reason can be heard. */}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-disabled={kitFull || undefined}
+                  aria-describedby={kitFull ? fullNoteId : undefined}
+                  onClick={() => {
+                    if (!kitFull) undo(lastRemoved, true)
+                  }}
+                >
                   Geri al
                 </Button>
                 <Button
@@ -182,6 +204,11 @@ export function CardsTab({
             }
           >
             “{stepTitle(lastRemoved.step)}” silindi.
+            {kitFull && (
+              <span id={fullNoteId} className="mt-1 block text-xs">
+                {KIT_FULL_MESSAGE}
+              </span>
+            )}
           </Alert>
         )}
         {draft.steps.length > 0 && (

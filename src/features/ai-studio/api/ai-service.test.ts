@@ -1,3 +1,4 @@
+import type { Step } from '@/entities/kit'
 import { isAppError } from '@/shared/api/errors'
 import { MINIMAL_SEED, seedMockBackend, signInAs } from '@/test/mock-backend'
 
@@ -10,6 +11,15 @@ const scene = (prompt: string) => ({
   states: ['before', 'after', 'static'],
   prompt,
 })
+
+/** Option labels of the question cards, in the order a child sees them. */
+function optionLabels(steps: readonly Step[]) {
+  return steps.flatMap((step) =>
+    step.type === 'quiz' || step.type === 'choose-correct'
+      ? step.options.map((option) => option.label)
+      : [],
+  )
+}
 
 async function failure(promise: Promise<unknown>) {
   const error = await promise.then(
@@ -95,6 +105,40 @@ describe('AI service (fake provider, ADR 0018)', () => {
     })
     expect(kit.steps).toHaveLength(5)
     expect(kit.steps.every((step) => step.aiGenerated)).toBe(true)
+  })
+
+  it('drafts question cards whose answers cannot be guessed from position, icon or color', async () => {
+    const topics = ['Mıknatıs', 'Su döngüsü', 'Gezegenler', 'Işık', 'Ses', 'Volkanlar']
+    const wrongChoicePositions = new Set<number>()
+    const correctQuizPositions = new Set<number>()
+
+    for (const topic of topics) {
+      // oxlint-disable-next-line no-await-in-loop -- the mock backend handles one draft at a time
+      const kit = await aiService.draftKit({ topic, ageMin: 7, ageMax: 11, cardCount: 4 })
+      const choose = kit.steps.find((step) => step.type === 'choose-correct')
+      const quiz = kit.steps.find((step) => step.type === 'quiz')
+      if (choose?.type !== 'choose-correct' || quiz?.type !== 'quiz') throw new Error('no cards')
+
+      expect(new Set(choose.options.map((option) => option.icon)).size).toBe(1)
+      expect(new Set(choose.options.map((option) => option.color)).size).toBe(1)
+      expect(choose.options.filter((option) => option.correct)).toHaveLength(2)
+      wrongChoicePositions.add(choose.options.findIndex((option) => !option.correct))
+
+      const correct = quiz.options.find((option) => option.id === quiz.correctOptionId)
+      expect(correct?.label).toMatch(/bir bilim konusudur$/)
+      correctQuizPositions.add(quiz.options.findIndex((option) => option.id === correct?.id))
+    }
+
+    expect(wrongChoicePositions.size).toBeGreaterThan(1)
+    expect(correctQuizPositions.size).toBeGreaterThan(1)
+  })
+
+  it('shuffles the same topic the same way every time', async () => {
+    const request = { topic: 'Mıknatıs', ageMin: 7, ageMax: 11, cardCount: 4 }
+    const first = await aiService.draftKit(request)
+    const second = await aiService.draftKit(request)
+
+    expect(optionLabels(first.steps)).toEqual(optionLabels(second.steps))
   })
 
   it('generates icons and stores one in the media library', async () => {

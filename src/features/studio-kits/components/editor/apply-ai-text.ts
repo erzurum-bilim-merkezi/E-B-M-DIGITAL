@@ -1,6 +1,9 @@
-import { newItemId, sequenceItemIcon, type AiField, type Step } from '@/entities/kit'
+import { newItemId, sequenceItemIcon, shuffleStable, type AiField, type Step } from '@/entities/kit'
 
 import type { AiCardText } from './editor-services'
+
+/** Neutral look of AI choices: an icon or colour per correctness would give the answer away. */
+const AI_CHOICE_ICON = '✨'
 
 /** Applies AI-drafted text to the card's fields for its block type (every field stays editable). */
 export function applyAiText(step: Step, draft: AiCardText): { step: Step; fields: AiField[] } {
@@ -20,14 +23,18 @@ export function applyAiText(step: Step, draft: AiCardText): { step: Step; fields
         return {
           step: {
             ...base,
-            options: options.slice(0, 6).map((label, index) => ({
-              id: newItemId('o'),
-              label: label.slice(0, 24),
-              icon: index < draft.correctCount ? '✅' : '🎩',
-              color: index < draft.correctCount ? ('green' as const) : ('purple' as const),
-              correct: index < draft.correctCount,
-              feedback: '',
-            })),
+            // AI options arrive correct-first: shuffle them (stable per card) and style them alike.
+            options: shuffleStable(
+              options.slice(0, 6).map((label, index) => ({
+                id: newItemId('o'),
+                label: label.slice(0, 24),
+                icon: AI_CHOICE_ICON,
+                color: 'sky' as const,
+                correct: index < draft.correctCount,
+                feedback: '',
+              })),
+              `${step.id}:ai-options`,
+            ),
           },
           fields: [...fields, 'options'],
         }
@@ -35,15 +42,17 @@ export function applyAiText(step: Step, draft: AiCardText): { step: Step; fields
       break
     case 'quiz':
       if (options.length >= 2) {
+        // The first AI option is the answer; after the shuffle it can sit anywhere (A–D).
         const quizOptions = options
           .slice(0, 4)
           .map((label) => ({ id: newItemId('q'), label: label.slice(0, 80) }))
+        const answerId = quizOptions[0]?.id ?? ''
         return {
           step: {
             ...base,
             question: draft.title.slice(0, 160),
-            options: quizOptions,
-            correctOptionId: quizOptions[0]?.id ?? '',
+            options: shuffleStable(quizOptions, `${step.id}:ai-options`),
+            correctOptionId: answerId,
           },
           fields: [...fields, 'options'],
         }
@@ -55,7 +64,7 @@ export function applyAiText(step: Step, draft: AiCardText): { step: Step; fields
           step: {
             ...base,
             // AI options arrive in the solved order: order-free icons keep the answer hidden.
-            items: options.slice(0, 6).map((label, index) => ({
+            items: options.slice(0, 8).map((label, index) => ({
               id: newItemId('s'),
               label: label.slice(0, 40),
               icon: sequenceItemIcon(index),

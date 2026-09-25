@@ -17,6 +17,19 @@ const image = (overrides: Partial<NewMedia> = {}): NewMedia => ({
   ...overrides,
 })
 
+function svg(body: string, viewBox: string) {
+  return new Blob(
+    [
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}"><title>Tohum</title><desc>Tohum çimleniyor</desc>${body}</svg>`,
+    ],
+    { type: 'image/svg+xml' },
+  )
+}
+
+function upload(kind: 'ai-scene' | 'ai-icon', blob: Blob) {
+  return mediaRepository.upload(image({ kind, blob, mime: 'image/svg+xml', alt: 'Tohum' }))
+}
+
 async function failure(promise: Promise<unknown>) {
   const error = await promise.then(
     () => null,
@@ -59,6 +72,38 @@ describe('media repository (mock adapter)', () => {
     expect((await failure(mediaRepository.upload(image({ alt: '  ' })))).message).toMatch(
       /alternatif metin/,
     )
+  })
+
+  it('refuses a file whose content type differs from the declared one', async () => {
+    const svgAsPng = new Blob(['<svg xmlns="http://www.w3.org/2000/svg"/>'], {
+      type: 'image/svg+xml',
+    })
+
+    const mismatch = await failure(mediaRepository.upload(image({ blob: svgAsPng })))
+    expect(mismatch.code).toBe('validation')
+    expect(mismatch.message).toBe('Bu dosya türü kabul edilmiyor.')
+    expect(await mediaRepository.list({ kind: 'all', query: '' })).toEqual([])
+  })
+
+  it('runs the AI SVG safety check on AI scene and icon uploads', async () => {
+    const scene = await upload('ai-scene', svg('<circle r="4"/>', '0 0 400 260'))
+    const icon = await upload('ai-icon', svg('<circle r="4"/>', '0 0 64 64'))
+    expect([scene.kind, icon.kind]).toEqual(['ai-scene', 'ai-icon'])
+
+    for (const [kind, viewBox] of [
+      ['ai-scene', '0 0 400 260'],
+      ['ai-icon', '0 0 64 64'],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop -- one upload at a time
+      const scripted = await failure(upload(kind, svg('<script>alert(1)</script>', viewBox)))
+      expect(scripted.message).toMatch(/güvenlik kontrolünden geçemedi/)
+      // oxlint-disable-next-line no-await-in-loop -- one upload at a time
+      const external = await failure(
+        upload(kind, svg('<image href="https://x.test/a.png"/>', viewBox)),
+      )
+      expect(external.code).toBe('validation')
+    }
+    expect(await mediaRepository.list({ kind: 'all', query: '' })).toHaveLength(2)
   })
 
   it('updates the alt text', async () => {

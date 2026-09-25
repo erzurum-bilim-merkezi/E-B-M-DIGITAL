@@ -160,6 +160,61 @@ describe('validateKitForPublish', () => {
     )
   })
 
+  it('points a missing quiz answer at the answer radio group', () => {
+    const step = createDefaultStep('quiz', { id: 's-quiz', slug: 'quiz', qrCode: 'KC-01' })
+    step.correctOptionId = ''
+    expect(validateKitForPublish(kitWith(step))).toContainEqual(
+      expect.objectContaining({
+        stepId: 's-quiz',
+        field: 'correctOptionId',
+        message: 'Doğru cevabı işaretleyin.',
+      }),
+    )
+  })
+
+  it('rejects sequence steps that read the same, ignoring case and spaces', () => {
+    const step = createDefaultStep('sequence', { id: 's-seq', slug: 'seq', qrCode: 'KC-01' })
+    const [first, second, third] = step.items
+    if (!first || !second || !third) throw new Error('fixture')
+    step.items = [
+      { ...first, label: 'Işık' },
+      { ...second, label: ' IŞIK ' },
+      { ...third, label: 'Su' },
+    ]
+    expect(validateKitForPublish(kitWith(step))).toContainEqual(
+      expect.objectContaining({
+        field: 'items',
+        message: 'Sıralama adımları birbirinden farklı olmalı.',
+      }),
+    )
+
+    step.items = [
+      { ...first, label: 'Işık' },
+      { ...second, label: 'Isı' },
+      { ...third, label: 'Su' },
+    ]
+    const messages = validateKitForPublish(kitWith(step)).map((issue) => issue.message)
+    expect(messages).not.toContain('Sıralama adımları birbirinden farklı olmalı.')
+  })
+
+  it.each<[string, { materials?: string[]; safety?: string[] }]>([
+    ['materials', { materials: ['Bardak', '  '] }],
+    ['safety', { safety: ['Bir yetişkinle yap.', ''] }],
+  ])('blocks a blank %s line in an experiment', (field, lists) => {
+    const step = {
+      ...createDefaultStep('experiment', { id: 's-exp', slug: 'exp', qrCode: 'KC-01' }),
+      ...lists,
+    }
+    expect(validateKitForPublish(kitWith(step))).toContainEqual(
+      expect.objectContaining({
+        stepId: 's-exp',
+        field,
+        severity: 'error',
+        message: 'Boş malzeme ya da güvenlik satırı var.',
+      }),
+    )
+  })
+
   it('rejects a library scene that cannot show the states the block drives', () => {
     const step = createDefaultStep('tap-reveal', { id: 's-t', slug: 't', qrCode: 'KC-01' })
     step.answer = 'Cevap'

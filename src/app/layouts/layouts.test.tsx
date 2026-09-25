@@ -237,18 +237,22 @@ describe('KidsLayout', () => {
     expect(region).toBeDefined()
     expect(region).toBeEmptyDOMElement()
 
+    // The layout mounts with the lazy page, so its connectivity subscription may still be on
+    // its way when the heading shows; the notice follows the connection as soon as it is on.
     onLine.mockReturnValue(false)
     act(() => {
       window.dispatchEvent(new Event('offline'))
     })
 
-    expect(region).toHaveTextContent('İnternet yok — kartlar çalışmaya devam eder')
+    await waitFor(() =>
+      expect(region).toHaveTextContent('İnternet yok — kartlar çalışmaya devam eder'),
+    )
     expect(region?.closest('.fixed')).toBeNull()
 
     onLine.mockReturnValue(true)
     act(() => {
       window.dispatchEvent(new Event('online'))
     })
-    expect(region).toBeEmptyDOMElement()
+    await waitFor(() => expect(region).toBeEmptyDOMElement())
   })
 })

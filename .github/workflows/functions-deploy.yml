@@ -1,0 +1,44 @@
+name: Edge Functions deploy (live)
+
+# Deploy order (ADR 0019): migrations → functions → frontend. Manual and approved. Function
+# secrets (GEMINI_API_KEY, AI_PROVIDER, GEMINI_MODEL, GEMINI_MODEL_LIGHT, ALLOWED_ORIGIN) are
+# entered in the Supabase dashboard, never stored in GitHub.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # No install scripts: a dependency never runs code next to the production secrets.
+      - run: npm ci --ignore-scripts
+      - name: Edge entities are in sync with the app
+        run: npm run sync:edge:check
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+      - name: Deploy
+        # The token is given to this step only.
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          for dir in supabase/functions/*/; do
+            name="$(basename "$dir")"
+            case "$name" in _*) continue ;; esac
+            supabase functions deploy "$name" --project-ref "$SUPABASE_PROJECT_REF" --use-api
+          done

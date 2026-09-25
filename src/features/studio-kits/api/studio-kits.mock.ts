@@ -7,7 +7,6 @@ import {
   canRenameKit,
   catalogSchema,
   createKitFromTemplate,
-  formatCardCode,
   isoDateTimeSchema,
   kitDocumentSchema,
   kitUsesAi,
@@ -18,11 +17,9 @@ import {
   qrIndexSchema,
   qrPrefixSchema,
   resolveKitMedia,
-  slugifyTr,
   slugSchema,
   studioKitSchema,
   syncQrRows,
-  uniqueSlug,
   validateKitForPublish,
   hasBlockingIssues,
   type KitDocument,
@@ -36,13 +33,8 @@ import { requireStaff } from '@/shared/api/mock-auth'
 import { mockDoc, mockGate, mockTable } from '@/shared/api/mock-db'
 import { MOCK_DOCS, MOCK_TABLES } from '@/shared/api/mock-tables'
 
-import type {
-  KitQrCode,
-  KitRepository,
-  PublishingService,
-  PublishValidationDetails,
-  QrRegistry,
-} from './port'
+import { duplicateDraft, duplicateIdentity, kitQrCodes, withPrefix } from './kit-logic'
+import type { KitRepository, PublishingService, PublishValidationDetails, QrRegistry } from './port'
 
 export const kitsTable = mockTable(MOCK_TABLES.kits, studioKitSchema)
 export const versionsTable = mockTable(MOCK_TABLES.kitVersions, kitVersionSchema)
@@ -95,12 +87,11 @@ function regenerate() {
   qrIndexDoc.set(buildQrIndex(kits, versions, qrTable.all(), timestamp))
   for (const kit of kits) {
     const latest = latestVersionOf(kit.id, versions)
-    if (latest) {
-      mockDoc(MOCK_DOCS.latest(latest.document.slug), latestPointerSchema).set({
-        version: latest.version,
-        publishedAt: latest.publishedAt,
-      })
-    }
+    if (!latest) continue
+    const pointer = mockDoc(MOCK_DOCS.latest(latest.document.slug), latestPointerSchema)
+    // An archived kit no longer opens by its address (its QR codes say it is archived).
+    if (kit.status === 'archived') pointer.remove()
+    else pointer.set({ version: latest.version, publishedAt: latest.publishedAt })
   }
   publishState.set({ generation })
 }
@@ -154,17 +145,6 @@ function validateIdentity(slug: string, qrPrefix: string, exceptId?: string) {
       'conflict',
       'Bu QR öneki kullanılmış. Basılı kodlar karışmasın diye başka bir önek seçin.',
     )
-}
-
-function withPrefix(document: KitDocument, qrPrefix: string): KitDocument {
-  return {
-    ...document,
-    qrPrefix,
-    steps: document.steps.map((step) => ({
-      ...step,
-      qrCode: formatCardCode(qrPrefix, Number(step.qrCode.split('-')[1] ?? '0')),
-    })),
-  }
 }
 
 export function createMockKitRepository(): KitRepository {
@@ -345,34 +325,14 @@ export function createMockKitRepository(): KitRepository {
       await mockGate('kits.duplicate')
       const caller = requireStaff()
       const source = getKit(id)
-      // Room for "-kopya" and a "-N" counter within the 60-character limit, never a trailing dash.
-      const slug = uniqueSlug(
-        `${slugifyTr(source.slug, 44)}-kopya`,
+      const { slug, qrPrefix } = duplicateIdentity(
+        source,
         new Set(kitsTable.all().map((row) => row.slug)),
-        'kopya',
+        prefixesHeldByOthers(),
       )
-      const prefixes = prefixesHeldByOthers()
-      let qrPrefix = source.qrPrefix
-      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-      for (let i = 0; prefixes.has(qrPrefix) && i < letters.length * letters.length; i++) {
-        const base = source.qrPrefix.slice(0, 2)
-        qrPrefix = `${base}${letters[i % letters.length] ?? 'X'}${i >= letters.length ? (letters[Math.floor(i / letters.length)] ?? '') : ''}`
-      }
-      if (prefixes.has(qrPrefix)) {
-        throw new AppError('conflict', 'Kopya için boş bir QR öneki bulunamadı.')
-      }
       const kitId = crypto.randomUUID()
       const timestamp = now()
-      const draft = withPrefix(
-        {
-          ...structuredClone(source.draft),
-          id: kitId,
-          slug,
-          title: `${source.draft.title} (kopya)`.slice(0, 60),
-          version: 0,
-        },
-        qrPrefix,
-      )
+      const draft = duplicateDraft(source, { id: kitId, slug, qrPrefix })
       const parsed = studioKitSchema.safeParse({
         ...source,
         id: kitId,
@@ -734,51 +694,11 @@ export function createMockQrRegistry(): QrRegistry {
     async listForKit(kitId) {
       await mockGate('qr.listForKit')
       requireStaff()
-      const kit = getKit(kitId)
-      const latest = latestVersionOf(kitId, versionsTable.all())
-      const liveCodes = new Set<string>(
-        latest
-          ? [latest.document.qrPrefix, ...latest.document.steps.map((step) => step.qrCode)]
-          : [],
+      return kitQrCodes(
+        getKit(kitId),
+        versionsTable.filter((row) => row.kitId === kitId),
+        qrTable.filter((row) => row.kitId === kitId),
       )
-      const live = kit.status !== 'archived'
-      const draftCodes = new Set(kit.draft.steps.map((step) => step.qrCode))
-      const codes: KitQrCode[] = [
-        {
-          code: kit.qrPrefix,
-          stepId: null,
-          title: kit.draft.title,
-          icon: kit.draft.icon,
-          cardNumber: null,
-          state: live && liveCodes.has(kit.qrPrefix) ? 'live' : 'pending',
-        },
-        ...kit.draft.steps.map((step, index) => ({
-          code: step.qrCode,
-          stepId: step.id,
-          title: step.title,
-          icon: step.icon,
-          cardNumber: index + 1,
-          state: (live && liveCodes.has(step.qrCode) ? 'live' : 'pending') as KitQrCode['state'],
-        })),
-      ]
-      for (const row of qrTable.filter(
-        (candidate) => candidate.kitId === kitId && candidate.stepId !== null,
-      )) {
-        if (draftCodes.has(row.code)) continue
-        // A card deleted only in the draft stays in the published qr-index until the next
-        // publish; its code is retired only once it is in neither the published version nor
-        // the draft.
-        const published = liveCodes.has(row.code)
-        codes.push({
-          code: row.code,
-          stepId: row.stepId,
-          title: 'Silinmiş kart',
-          icon: { kind: 'emoji', value: '🗑️' },
-          cardNumber: null,
-          state: published ? (live ? 'live' : 'pending') : 'retired',
-        })
-      }
-      return codes
     },
   }
 }

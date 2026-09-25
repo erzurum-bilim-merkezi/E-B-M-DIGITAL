@@ -1,6 +1,6 @@
 # 0019. Sürüm uyumluluğu, deploy sırası ve service worker güncellemesi
 
-- **Durum:** Önerildi (F4/F13)
+- **Durum:** Kısmen uygulandı (2026-09-25): deploy sırası ve `schema_version()` kapısı; service worker `prompt` güncellemesi F13'te
 - **Tarih:** 2026-09-24
 
 ## Karar (önerilen)

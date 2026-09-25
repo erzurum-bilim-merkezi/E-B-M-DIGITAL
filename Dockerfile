@@ -14,10 +14,17 @@ ARG VITE_APP_ENV=production
 ARG VITE_APP_NAME="Erzurum Bilim Merkezi"
 # Safe default: the in-browser mock backend is never served as the live app (ADR 0013).
 ARG VITE_COMING_SOON=true
+# Launching (VITE_COMING_SOON=false) needs the Supabase backend; the build refuses the mock.
+ARG VITE_BACKEND=mock
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_PUBLISHABLE_KEY
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
     VITE_APP_ENV=$VITE_APP_ENV \
     VITE_APP_NAME=$VITE_APP_NAME \
-    VITE_COMING_SOON=$VITE_COMING_SOON
+    VITE_COMING_SOON=$VITE_COMING_SOON \
+    VITE_BACKEND=$VITE_BACKEND \
+    VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_PUBLISHABLE_KEY=$VITE_SUPABASE_PUBLISHABLE_KEY
 # Production images must point at a real API — don't silently fall back to localhost.
 RUN test -n "$VITE_API_BASE_URL" || (echo "Build arg VITE_API_BASE_URL is required" >&2 && exit 1)
 COPY . .

@@ -64,6 +64,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await expect
         .poll(async () => {
           cards = await page
+            .getByRole('list', { name: 'Kartlar' })
             .getByRole('link')
             .evaluateAll((links) =>
               links

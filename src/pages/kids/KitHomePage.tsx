@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 
-import type { KitDocument } from '@/entities/kit'
+import { firstUnfinishedStep, type KitDocument } from '@/entities/kit'
 import {
   kitProgressSummary,
   track,
@@ -16,14 +16,19 @@ import { KidButton, KidPanel, useApplyKidTheme } from '@/shared/ui/kid'
 import { KidsTopBar } from './components/KidsTopBar'
 import { KitLoader } from './components/KitLoader'
 
+const ctaClass =
+  'kid-focus inline-flex min-h-16 items-center justify-center gap-2 self-center rounded-[1.375rem] px-7 text-xl font-bold transition-transform active:translate-y-1'
+
 function KitHome({ kit }: { kit: KitDocument }) {
   const { explorer } = useActiveExplorer()
-  const { progress } = useExplorerProgress(explorer?.id)
+  const [params] = useSearchParams()
+  const { progress, isPending } = useExplorerProgress(explorer?.id)
   const reset = useResetKitProgress()
   const [confirmReset, setConfirmReset] = useState(false)
   const opened = useRef(false)
   useApplyKidTheme(kit.theme)
   const summary = kitProgressSummary(kit, progress.get(kit.id))
+  const resume = firstUnfinishedStep(kit, summary.completedStepIds)
 
   useEffect(() => {
     if (!explorer || opened.current) return
@@ -32,11 +37,42 @@ function KitHome({ kit }: { kit: KitDocument }) {
   }, [explorer, kit.id])
 
   if (!explorer) return null
+  // "Bir QR yeter": the kit's own QR goes straight on to the first card still to do.
+  if (params.get('giris') === 'qr' && kit.qrEntryMode === 'full') {
+    if (isPending) return null
+    return (
+      <Navigate
+        replace
+        to={resume ? `/kit/${kit.slug}/${resume.slug}` : `/kit/${kit.slug}/tamamlandi`}
+      />
+    )
+  }
   return (
     <div className="flex flex-col gap-6 py-2">
       <title>{`${kit.title} · Kâşif`}</title>
       <KidsTopBar back={{ to: '/', label: 'Bilim Merkezine dön' }} explorer={explorer} />
       <KitHero kit={kit} ratio={summary.ratio} completedCount={summary.completedCount} />
+      {kit.qrEntryMode === 'focused' && !summary.done && (
+        <KidPanel className="flex flex-col items-center gap-3 text-center">
+          <p className="text-lg font-semibold">
+            Bu kitte her kartın kendi QR kodu var. Kartları okutarak ilerle!
+          </p>
+          <Link
+            to="/qr-okut"
+            className={`${ctaClass} bg-kid-primary text-kid-primary-fg shadow-kid-3d`}
+          >
+            📷 QR okut
+          </Link>
+        </KidPanel>
+      )}
+      {kit.qrEntryMode === 'full' && resume && (
+        <Link
+          to={`/kit/${kit.slug}/${resume.slug}`}
+          className={`${ctaClass} bg-kid-accent text-kid-accent-fg shadow-kid-3d-accent`}
+        >
+          {summary.completedCount > 0 ? '▶ Kaldığın yerden devam et' : '▶ Başla'}
+        </Link>
+      )}
       <KitMenu
         kit={kit}
         completed={summary.completedStepIds}
@@ -46,7 +82,7 @@ function KitHome({ kit }: { kit: KitDocument }) {
       {summary.done && (
         <Link
           to={`/kit/${kit.slug}/tamamlandi`}
-          className="kid-focus inline-flex min-h-16 items-center justify-center gap-2 self-center rounded-[1.375rem] bg-kid-accent px-7 text-xl font-bold text-kid-accent-fg shadow-kid-3d-accent transition-transform active:translate-y-1"
+          className={`${ctaClass} bg-kid-accent text-kid-accent-fg shadow-kid-3d-accent`}
         >
           🏆 Rozetimi gör
         </Link>

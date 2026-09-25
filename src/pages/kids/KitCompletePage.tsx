@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router'
 
-import type { KitDocument } from '@/entities/kit'
-import { kitProgressSummary, track, useExplorerProgress } from '@/features/activity'
+import { requiredStepIds, type KitDocument } from '@/entities/kit'
+import { useKitCompletion } from '@/features/activity'
 import { useActiveExplorer } from '@/features/explorer'
 import { KitIcon } from '@/features/kit-player'
 import { KidPanel, Mascot, useApplyKidTheme, useCelebrate } from '@/shared/ui/kid'
@@ -15,32 +15,23 @@ const linkClass =
 
 function Complete({ kit }: { kit: KitDocument }) {
   const { explorer } = useActiveExplorer()
-  const { progress, isPending } = useExplorerProgress(explorer?.id)
+  // R13: completion is reported once (the server keeps the first completion time).
+  const { summary, isPending } = useKitCompletion(kit, explorer?.id)
   const celebrate = useCelebrate()
-  const reported = useRef(false)
+  const celebrated = useRef(false)
   useApplyKidTheme(kit.theme)
-  const row = progress.get(kit.id)
-  const summary = kitProgressSummary(kit, row)
 
-  // R13: "Bitirdim!" — report completion once (the server keeps the first completion time).
   useEffect(() => {
-    if (!explorer || isPending || !summary.done || reported.current) return
-    reported.current = true
+    if (!explorer || isPending || !summary.done || celebrated.current) return
+    celebrated.current = true
     celebrate(`${kit.badge.emoji} ${kit.badge.name} rozetini kazandın!`)
-    if (!row?.completedAt) {
-      track({
-        type: 'kit_complete',
-        explorerId: explorer.id,
-        kitId: kit.id,
-        stepId: null,
-        data: { durationMs: row?.totalDurationMs ?? 0 },
-      })
-    }
-  }, [celebrate, explorer, isPending, kit, row, summary.done])
+  }, [celebrate, explorer, isPending, kit.badge, summary.done])
 
   if (!explorer) return null
+  // Same rule as completion: a kit without required cards needs all of them.
+  const required = new Set(requiredStepIds(kit))
   const remaining = kit.steps.filter(
-    (step) => step.required && !summary.completedStepIds.has(step.id),
+    (step) => required.has(step.id) && !summary.completedStepIds.has(step.id),
   )
 
   return (

@@ -1,0 +1,41 @@
+name: Reset an admin's 2FA (live, emergency)
+
+# Runbook: a Studio user lost the phone with the authenticator. Removes their TOTP factors so the
+# next sign-in enrols a new one. Approved like every live change (environment `production`).
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'E-mail of the Studio account'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      # The e-mail is personal data and this repository's logs are public: mask it before any
+      # step shows it. Read from the event file, so this step's own log does not hold it.
+      - name: Mask the input
+        run: >-
+          node -e 'const { email = "" } = require(process.env.GITHUB_EVENT_PATH).inputs;
+          for (const value of new Set([email, email.trim(), email.trim().toLowerCase()]))
+          if (value) console.log(`::add-mask::${value}`)'
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # No install scripts: a dependency never runs code next to the production secrets.
+      - run: npm ci --ignore-scripts
+      - name: Remove the authenticators
+        run: node scripts/admin-mfa-reset.mjs
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          ACCOUNT_EMAIL: ${{ inputs.email }}

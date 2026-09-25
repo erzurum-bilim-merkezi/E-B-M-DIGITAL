@@ -1,4 +1,5 @@
-import { downloadBlob, downloadJson, downloadText, toCsv } from './download'
+import { toCsv } from './csv'
+import { downloadBlob, downloadJson, downloadText } from './download'
 import {
   formatBytes,
   formatDuration,

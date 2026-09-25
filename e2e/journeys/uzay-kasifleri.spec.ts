@@ -307,7 +307,7 @@ test('Uzay Kâşifleri: Studio’da 10 kart elle girilir, yayınlanır, Kâşif�
     await expect(studio.getByLabel('Adres')).toHaveValue(UZAY_KIT.slug)
     await studio.getByLabel('QR öneki').fill(UZAY_KIT.qrPrefix)
     await studio.getByLabel('Kit ikonu', { exact: true }).fill(UZAY_KIT.icon)
-    await expect(studio.getByText(`Kart kodları: ${UZAY_KIT.qrPrefix}-01`)).toBeVisible()
+    await expect(studio.getByText(`Kit QR kodu: ${UZAY_KIT.qrPrefix}`)).toBeVisible()
     await shot(
       studio,
       's01-sihirbaz-ad',
@@ -367,11 +367,12 @@ test('Uzay Kâşifleri: Studio’da 10 kart elle girilir, yayınlanır, Kâşif�
       await test.step(`Kart ${index + 1}: ${card.title} (${BLOCK_LABELS[card.kind]})`, async () => {
         await addCard(studio, card)
         await expect(list.getByRole('listitem')).toHaveCount(index + 1)
-        await expect(studio.getByText(`QR ${UZAY_KIT.qrPrefix}-${nn(index)}`)).toBeVisible()
+        // "Bir QR yeter": cards have no QR of their own in the editor.
+        await expect(studio.getByText(`QR ${UZAY_KIT.qrPrefix}-${nn(index)}`)).toHaveCount(0)
         await shot(
           studio,
           `s${10 + index}-kart-${nn(index)}`,
-          `Kart ${index + 1} · ${card.title} — ${BLOCK_LABELS[card.kind]} (QR ${UZAY_KIT.qrPrefix}-${nn(index)})`,
+          `Kart ${index + 1} · ${card.title} — ${BLOCK_LABELS[card.kind]}`,
           true,
         )
       })
@@ -451,10 +452,14 @@ test('Uzay Kâşifleri: Studio’da 10 kart elle girilir, yayınlanır, Kâşif�
     ).toBeVisible()
   })
 
-  await test.step('Kâşif · QR ile tek karta giriş (UZAY-04 → Gezegenler)', async () => {
-    await kid.goto(`?q=${UZAY_KIT.qrPrefix}-04`)
-    await expect(kid.getByRole('heading', { level: 1, name: 'Gezegenler' })).toBeVisible()
-    await shot(kid, 'k32-qr-gezegenler', 'QR girişi · UZAY-04 doğrudan Gezegenler kartını açar')
+  await test.step('Kâşif · tek kit QR’ı (UZAY): bitmiş kitte tamamlama ekranı açılır', async () => {
+    await kid.goto(`?q=${UZAY_KIT.qrPrefix}`)
+    await expect(kid.getByRole('heading', { level: 1, name: 'Tebrikler Ada!' })).toBeVisible()
+    await shot(
+      kid,
+      'k32-qr-kit',
+      'QR girişi · UZAY kit QR’ı; tüm kartlar bittiği için rozet ekranı',
+    )
   })
 
   await test.step('Studio · çocuğun etkinliği panoda', async () => {

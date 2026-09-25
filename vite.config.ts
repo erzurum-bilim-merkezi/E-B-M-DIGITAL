@@ -39,10 +39,10 @@ function comingSoonDocument(enabled: boolean): Plugin {
  * GitHub Pages cannot send headers, so every build carries its CSP as a <meta> right after the
  * charset (before any script or stylesheet). The dev server stays unrestricted (HMR, devtools).
  */
-function contentSecurityPolicy(): Plugin {
+function contentSecurityPolicy(backendOrigin: string | null): Plugin {
   const tags = [
     // Same source and inputs as the nginx header (scripts/generate-nginx-headers.mjs).
-    `<meta http-equiv="Content-Security-Policy" content="${buildCsp({ backendOrigin: process.env['CSP_BACKEND_ORIGIN'] || null })}" />`,
+    `<meta http-equiv="Content-Security-Policy" content="${buildCsp({ backendOrigin })}" />`,
     `<meta name="referrer" content="${REFERRER_POLICY}" />`,
   ]
   return {
@@ -57,6 +57,42 @@ function contentSecurityPolicy(): Plugin {
       },
     },
   }
+}
+
+/**
+ * `<audio>` asks for byte ranges, and a 206 answer is never cached, so narration would not play
+ * offline. For CORS-mode audio (the kids' player) fetch the whole file, let the cache keep it and
+ * cut the asked range out of it; later plays come from the cache through `rangeRequests`. Video
+ * keeps streaming ranges, and opaque (no-cors) audio is left alone: Chrome refuses a full opaque
+ * answer to a range request. Serialized into the service worker: no outside references.
+ */
+const wholeAudioFile = {
+  requestWillFetch: async ({ request }: { request: Request }) => {
+    if (request.destination !== 'audio' || request.mode !== 'cors' || !request.headers.has('range'))
+      return request
+    const headers = new Headers(request.headers)
+    headers.delete('range')
+    return new Request(request, { headers })
+  },
+  handlerWillRespond: async ({ request, response }: { request: Request; response: Response }) => {
+    const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range')?.trim() ?? '')
+    if (!range || response.status !== 200 || request.destination !== 'audio') return response
+    const body = await response.blob()
+    const size = body.size
+    const start = range[1] ? Number(range[1]) : Math.max(size - Number(range[2]), 0)
+    const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1
+    if (start > end) {
+      return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
+    }
+    const headers = new Headers(response.headers)
+    headers.set('Content-Range', `bytes ${start}-${end}/${size}`)
+    headers.set('Content-Length', String(end - start + 1))
+    return new Response(body.slice(start, end + 1), {
+      status: 206,
+      statusText: 'Partial Content',
+      headers,
+    })
+  },
 }
 
 // https://vite.dev/config/
@@ -79,7 +115,13 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       comingSoonDocument(appEnv.VITE_COMING_SOON),
-      contentSecurityPolicy(),
+      // The Supabase project is the only backend origin (CSP_BACKEND_ORIGIN overrides it).
+      contentSecurityPolicy(
+        process.env['CSP_BACKEND_ORIGIN'] ||
+          (appEnv.VITE_BACKEND === 'supabase' && appEnv.VITE_SUPABASE_URL
+            ? new URL(appEnv.VITE_SUPABASE_URL).origin
+            : null),
+      ),
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.svg', 'kasifkit-logo-mark.svg'],
@@ -87,6 +129,49 @@ export default defineConfig(({ mode }) => {
           cacheId: 'kasif',
           cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+          // Supabase Storage (plan §3.6): kits keep working when the centre's Wi-Fi drops.
+          runtimeCaching: [
+            {
+              // catalog.json, qr-index.json, latest.json change on every publish.
+              urlPattern: ({ url }) =>
+                url.pathname.includes('/storage/v1/object/public/published/') &&
+                !/\/v\d+\.json$/.test(url.pathname),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'kasif-published-index',
+                networkTimeoutSeconds: 4,
+                cacheableResponse: { statuses: [200] },
+              },
+            },
+            {
+              // v<n>.json never changes once written.
+              urlPattern: ({ url }) =>
+                url.pathname.includes('/storage/v1/object/public/published/') &&
+                /\/v\d+\.json$/.test(url.pathname),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'kasif-published-versions',
+                cacheableResponse: { statuses: [200] },
+                expiration: { maxEntries: 200 },
+              },
+            },
+            {
+              // Library files and AI drawings have their own id in the name: they never change.
+              // Kids' <img>/<audio> load them in CORS mode, so the responses are cacheable.
+              urlPattern: ({ url }) =>
+                url.pathname.includes('/storage/v1/object/public/media/') ||
+                url.pathname.includes('/storage/v1/object/public/ai/'),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'kasif-media',
+                cacheableResponse: { statuses: [200] },
+                // Audio asks for byte ranges: a cached file answers them too.
+                rangeRequests: true,
+                plugins: [wholeAudioFile],
+                expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 60 },
+              },
+            },
+          ],
         },
         // Pre-launch the installable app is the coming-soon page; afterwards it is Kâşif.
         manifest: appEnv.VITE_COMING_SOON
@@ -143,6 +228,12 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
+      // Supabase adapters are unit-tested against MSW at the local-stack address (never the live
+      // project). VITE_BACKEND stays "mock": the app under test runs on the mock backend.
+      env: {
+        VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_unit-tests-only-000000',
+      },
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
       css: true,
       restoreMocks: true,

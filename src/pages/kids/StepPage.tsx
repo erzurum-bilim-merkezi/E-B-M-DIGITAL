@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 
-import { getAdjacentSteps, getStepBySlug, type KitDocument } from '@/entities/kit'
-import { kitProgressSummary, track, useExplorerProgress } from '@/features/activity'
+import {
+  getStepBySlug,
+  getStepIndex,
+  nextUnfinishedStep,
+  requiredStepIds,
+  type KitDocument,
+} from '@/entities/kit'
+import { track, useKitCompletion } from '@/features/activity'
 import { useActiveExplorer } from '@/features/explorer'
 import { PlayerProvider, StepShell, type PlayerEnvironment } from '@/features/kit-player'
 import { usePrefersReducedMotion } from '@/shared/hooks/usePrefersReducedMotion'
@@ -14,7 +20,8 @@ function StepView({ kit }: { kit: KitDocument }) {
   const { stepSlug = '' } = useParams()
   const [params] = useSearchParams()
   const { explorer } = useActiveExplorer()
-  const { progress } = useExplorerProgress(explorer?.id)
+  // The card that finishes the kit reports it — focused-mode kits never pass the menu (R13).
+  const { summary } = useKitCompletion(kit, explorer?.id)
   const celebrate = useCelebrate()
   const osReduced = usePrefersReducedMotion()
   // Render stays pure: the mount time is read once (lazy initial state), then kept in a ref.
@@ -70,8 +77,12 @@ function StepView({ kit }: { kit: KitDocument }) {
     )
   }
 
-  const { next, index } = getAdjacentSteps(kit, step.id)
-  const summary = kitProgressSummary(kit, progress.get(kit.id))
+  const index = getStepIndex(kit, step.id)
+  const done = summary.completedStepIds
+  // Unfinished cards first, wrapping around: a child who started from a QR in the middle of the
+  // kit still reaches the cards before it.
+  const next = nextUnfinishedStep(kit, step.id, done)
+  const required = requiredStepIds(kit)
   // R2: a QR scan in "focused" kits shows only this card (E-B-M direct entry).
   const focused = params.get('giris') === 'qr' && kit.qrEntryMode === 'focused'
   const base = `/kit/${kit.slug}`
@@ -84,12 +95,15 @@ function StepView({ kit }: { kit: KitDocument }) {
         step={step}
         index={index}
         focused={focused}
-        completed={summary.completedStepIds.has(step.id)}
+        completed={done.has(step.id)}
+        kitDone={summary.done}
+        progress={{ done: required.filter((id) => done.has(id)).length, total: required.length }}
         nav={{
           home: { to: base },
           next: next ? { to: `${base}/${next.slug}` } : undefined,
           finish: { to: `${base}/tamamlandi` },
           allCards: { to: base },
+          scanNext: { to: '/qr-okut' },
         }}
         onStepComplete={({ attempts }) =>
           track({

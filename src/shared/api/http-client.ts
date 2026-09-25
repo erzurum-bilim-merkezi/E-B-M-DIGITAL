@@ -35,11 +35,12 @@ export function setAccessTokenProvider(provider: TokenProvider) {
   getAccessToken = provider
 }
 
+/** `path` is relative to VITE_API_BASE_URL, or an absolute http(s) URL (published snapshots). */
 export function buildUrl(path: string, query?: QueryParams) {
   const base = env.VITE_API_BASE_URL.endsWith('/')
     ? env.VITE_API_BASE_URL
     : `${env.VITE_API_BASE_URL}/`
-  const url = new URL(path.replace(/^\/+/, ''), base)
+  const url = /^https?:\/\//.test(path) ? new URL(path) : new URL(path.replace(/^\/+/, ''), base)
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== undefined && value !== null) url.searchParams.set(key, String(value))
   }

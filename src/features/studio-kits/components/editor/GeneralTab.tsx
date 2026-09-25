@@ -96,7 +96,11 @@ function RenameDialog({
           </Field>
           <Field
             label="QR öneki"
-            description={`Kart kodları: ${prefix || '…'}-01, ${prefix || '…'}-02 …`}
+            description={
+              kit.draft.qrEntryMode === 'full'
+                ? `Kit QR kodu: ${prefix || '…'}`
+                : `Kit QR kodu: ${prefix || '…'} · kart kodları: ${prefix || '…'}-01, ${prefix || '…'}-02 …`
+            }
             error={prefixError}
           >
             <Input
@@ -337,14 +341,14 @@ export function GeneralTab({
               <RadioItem
                 id="qr-mode-focused"
                 value="focused"
-                label="Yalnızca okutulan kart"
-                description="E-B-M gibi: çocuk sadece o kartı görür, kitte gezinmez."
+                label="Her kart kendi QR'ı ile"
+                description="QR yalnızca o kartı açar. Kart bitince çocuktan sıradaki kartın QR'ını okutması istenir."
               />
               <RadioItem
                 id="qr-mode-full"
                 value="full"
-                label="Tüm kit"
-                description="Kart açılır; sıradaki kartlara da geçilebilir."
+                label="Bir QR yeter, sırayla devam"
+                description="Kit ya da kart QR'ı okutulunca çocuk, bitmemiş kartlarla QR okutmadan kitin sonuna kadar ilerler."
               />
             </RadioGroup>
           </fieldset>

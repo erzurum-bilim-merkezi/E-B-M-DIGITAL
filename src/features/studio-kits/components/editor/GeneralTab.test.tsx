@@ -289,10 +289,10 @@ describe('GeneralTab', () => {
     const kit = await createKit()
     const { user, current } = renderGeneralTab(kit)
 
-    await user.click(screen.getByRole('radio', { name: /^Tüm kit/ }))
+    await user.click(screen.getByRole('radio', { name: /^Bir QR yeter, sırayla devam/ }))
     expect(current().qrEntryMode).toBe('full')
 
-    await user.click(screen.getByRole('radio', { name: /^Yalnızca okutulan kart/ }))
+    await user.click(screen.getByRole('radio', { name: /^Her kart kendi QR'ı ile/ }))
     expect(current().qrEntryMode).toBe('focused')
   })
 
@@ -341,7 +341,7 @@ describe('GeneralTab', () => {
       expect(slug).toHaveValue('bahce-kiti')
       expect(slug).toHaveAccessibleDescription('/kit/bahce-kiti')
       expect(prefix).toHaveValue('BK')
-      expect(prefix).toHaveAccessibleDescription('Kart kodları: BK-01, BK-02 …')
+      expect(prefix).toHaveAccessibleDescription('Kit QR kodu: BK · kart kodları: BK-01, BK-02 …')
 
       await user.click(within(dialog).getByRole('button', { name: 'Kaydet' }))
 

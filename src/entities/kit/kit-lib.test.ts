@@ -2,6 +2,7 @@ import {
   buildQrUrl,
   collectMediaAssetIds,
   contrastRatio,
+  firstUnfinishedStep,
   formatCardCode,
   getAdjacentSteps,
   getStepBySlug,
@@ -12,6 +13,7 @@ import {
   newItemId,
   newStepId,
   nextQrCode,
+  nextUnfinishedStep,
   normalizeQrCode,
   parseScannedText,
   parseVideoUrl,
@@ -280,6 +282,30 @@ describe('navigation', () => {
     expect(isKitComplete(kit, six)).toBe(true)
     expect(kitProgressRatio(kit, six.slice(0, 3))).toBe(0.5)
     expect(kitProgressRatio({ steps: [] }, [])).toBe(0)
+  })
+
+  it('resumes at the first unfinished required card', () => {
+    const ids = KUCUK_CIFTCILER.steps.map((step) => step.id)
+    expect(firstUnfinishedStep(KUCUK_CIFTCILER, [])?.id).toBe(ids[0])
+    expect(firstUnfinishedStep(KUCUK_CIFTCILER, [ids[0] ?? '', ids[2] ?? ''])?.id).toBe(ids[1])
+    expect(firstUnfinishedStep(KUCUK_CIFTCILER, ids)).toBeUndefined()
+  })
+
+  it('goes on to the next unfinished card and wraps around to skipped ones', () => {
+    const ids = KUCUK_CIFTCILER.steps.map((step) => step.id)
+    const at = (index: number) => ids[index] ?? ''
+    // Card 2 is done: from card 1 the next one is card 3.
+    expect(nextUnfinishedStep(KUCUK_CIFTCILER, at(0), [at(1)])?.id).toBe(at(2))
+    // From the last card, the skipped first card comes next.
+    expect(nextUnfinishedStep(KUCUK_CIFTCILER, at(6), ids.slice(1, 6))?.id).toBe(at(0))
+    // Only the current card is left: nothing to go on to.
+    expect(
+      nextUnfinishedStep(
+        KUCUK_CIFTCILER,
+        at(3),
+        ids.filter((id) => id !== at(3)),
+      ),
+    ).toBeUndefined()
   })
 })
 

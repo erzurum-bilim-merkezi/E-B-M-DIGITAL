@@ -48,6 +48,8 @@ function PreviewStep({
         index={index}
         focused={false}
         completed={false}
+        // No progress in the preview: the last card stands for the finished kit.
+        kitDone={index === kit.steps.length - 1}
         autoFocus={false}
         nav={{
           home: { onClick: () => onNavigate(null) },

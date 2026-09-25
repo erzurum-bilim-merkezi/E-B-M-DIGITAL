@@ -1,13 +1,13 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
-import type { ActivityEvent } from '@/entities/activity'
+import { MAX_DURATION_MS, type ActivityEvent } from '@/entities/activity'
 import { mergeProgress, type EarnedBadge, type ExplorerProgress } from '@/entities/explorer'
 import { isKitComplete, kitProgressRatio, type KitDocument } from '@/entities/kit'
 import { KIDS_QUERY_ROOT } from '@/shared/api/query-keys'
 
 import { progressService } from './index'
-import { eventQueue, flushQueue, onFlushed, pendingEvents } from './queue'
+import { eventQueue, flushQueue, onFlushed, pendingEvents, track } from './queue'
 
 export const progressKeys = {
   all: [KIDS_QUERY_ROOT, 'progress'] as const,
@@ -60,6 +60,20 @@ function optimisticProgress(explorerId: string, events: readonly ActivityEvent[]
   return byKit
 }
 
+/** A member's progress rows with events folded in, one row per kit. */
+function withEvents(
+  rows: readonly ExplorerProgress[],
+  explorerId: string,
+  events: readonly ActivityEvent[],
+) {
+  const byKit = new Map(rows.map((row) => [row.kitId, row]))
+  for (const [kitId, local] of optimisticProgress(explorerId, pendingEvents(events, explorerId))) {
+    const server = byKit.get(kitId)
+    byKit.set(kitId, server ? mergeProgress(server, local) : local)
+  }
+  return byKit
+}
+
 /** Server progress merged with not-yet-sent events: ✓ marks never wait for the network. */
 export function useExplorerProgress(explorerId: string | null | undefined) {
   const query = useQuery({
@@ -67,20 +81,13 @@ export function useExplorerProgress(explorerId: string | null | undefined) {
     enabled: Boolean(explorerId),
   })
   const queue = eventQueue.useValue()
-  const merged = useMemo(() => {
-    const map = new Map<string, ExplorerProgress>()
-    for (const row of query.data ?? []) map.set(row.kitId, row)
-    if (explorerId) {
-      for (const [kitId, local] of optimisticProgress(
-        explorerId,
-        pendingEvents(queue, explorerId),
-      )) {
-        const server = map.get(kitId)
-        map.set(kitId, server ? mergeProgress(server, local) : local)
-      }
-    }
-    return map
-  }, [explorerId, query.data, queue])
+  const merged = useMemo(
+    () =>
+      explorerId
+        ? withEvents(query.data ?? [], explorerId, queue)
+        : new Map<string, ExplorerProgress>(),
+    [explorerId, query.data, queue],
+  )
   return {
     progress: merged,
     isPending: Boolean(explorerId) && query.isPending,
@@ -100,6 +107,39 @@ export function kitProgressSummary(
     done: isKitComplete(kit, completed),
     completedCount: kit.steps.filter((step) => completed.has(step.id)).length,
   }
+}
+
+/**
+ * R13: reports `kit_complete` once all required cards are done and no completion is known yet —
+ * from whichever page sees it first (the card that finishes the kit, or the completion page), in
+ * both QR entry modes. A queued completion counts as known, so it is never sent twice.
+ */
+export function useKitCompletion(
+  kit: Pick<KitDocument, 'id' | 'steps'>,
+  explorerId: string | null | undefined,
+) {
+  const { progress, isPending } = useExplorerProgress(explorerId)
+  const row = progress.get(kit.id)
+  const summary = kitProgressSummary(kit, row)
+  const reported = useRef(false)
+  const completedAt = row?.completedAt ?? null
+  // The sum of the card times; a kit played over days is reported at the event's own cap (the
+  // server rejects an event beyond it, and the completion would never be recorded).
+  const durationMs = Math.min(Math.round(row?.totalDurationMs ?? 0), MAX_DURATION_MS)
+
+  useEffect(() => {
+    if (!explorerId || isPending || !summary.done || completedAt || reported.current) return
+    reported.current = true
+    track({
+      type: 'kit_complete',
+      explorerId,
+      kitId: kit.id,
+      stepId: null,
+      data: { durationMs },
+    })
+  }, [completedAt, durationMs, explorerId, isPending, kit.id, summary.done])
+
+  return { summary, row, isPending }
 }
 
 export function useExplorerBadges(explorerId: string | null | undefined) {
@@ -141,7 +181,14 @@ export function useActivitySync(onNewBadges?: (badges: EarnedBadge[]) => void) {
     const onOnline = () => void flushQueue()
     window.addEventListener('online', onOnline)
     const timer = window.setInterval(() => void flushQueue(), 20_000)
-    const unsubscribe = onFlushed(({ newBadges }) => {
+    const unsubscribe = onFlushed(({ events, newBadges }) => {
+      // The sent events join the cached progress before they leave the queue: a finished card
+      // or kit never looks unfinished (and is never reported again) while the refetch runs.
+      for (const explorerId of new Set(events.map((event) => event.explorerId))) {
+        queryClient.setQueryData(progressQueryOptions(explorerId).queryKey, (rows) =>
+          rows ? [...withEvents(rows, explorerId, events).values()] : rows,
+        )
+      }
       void queryClient.invalidateQueries({ queryKey: progressKeys.all })
       if (newBadges.length > 0) onNewBadges?.(newBadges)
     })

@@ -40,6 +40,51 @@ describe('parseEnv', () => {
   })
 })
 
+/** A legacy Supabase JWT key with the given payload (the signature is not checked). */
+function jwt(payload: object) {
+  return `eyJhbGciOiJIUzI1NiJ9.${btoa(JSON.stringify(payload)).replace(/=+$/, '')}.signature`
+}
+
+describe('backend selection', () => {
+  const PUBLISHABLE = 'sb_publishable_Q2h3S0ZhbnRhc3RpYy1rZXktZm9yLXRlc3Rz'
+
+  it('defaults to the in-browser mock', () => {
+    expect(parseEnv({}).VITE_BACKEND).toBe('mock')
+  })
+
+  it('needs the project URL and publishable key for Supabase', () => {
+    expect(() => parseEnv({ VITE_BACKEND: 'supabase' })).toThrow(/VITE_SUPABASE_URL/)
+    const parsed = parseEnv({
+      VITE_BACKEND: 'supabase',
+      VITE_SUPABASE_URL: 'https://abcd.supabase.co/',
+      VITE_SUPABASE_PUBLISHABLE_KEY: PUBLISHABLE,
+    })
+    expect(parsed.VITE_SUPABASE_URL).toBe('https://abcd.supabase.co')
+  })
+
+  it('accepts the legacy anon key of the local stack', () => {
+    const key = jwt({ iss: 'supabase-demo', role: 'anon' })
+    expect(parseEnv({ VITE_SUPABASE_PUBLISHABLE_KEY: key }).VITE_SUPABASE_PUBLISHABLE_KEY).toBe(key)
+  })
+
+  it.each([
+    ['a secret key', 'sb_secret_Q2h3S0ZhbnRhc3RpYy1rZXktZm9yLXRlc3Rz'],
+    ['a service_role JWT', jwt({ iss: 'supabase-demo', role: 'service_role' })],
+  ])('refuses %s in the browser bundle', (_, key) => {
+    expect(() => parseEnv({ VITE_SUPABASE_PUBLISHABLE_KEY: key })).toThrow(/publishable key/)
+  })
+
+  it('refuses to launch the public site on the mock backend', () => {
+    expect(() => parseEnv({ VITE_APP_ENV: 'production', VITE_COMING_SOON: 'false' })).toThrow(
+      /needs VITE_BACKEND=supabase/,
+    )
+    // Coming-soon builds never load a backend.
+    expect(parseEnv({ VITE_APP_ENV: 'production', VITE_COMING_SOON: 'true' }).VITE_BACKEND).toBe(
+      'mock',
+    )
+  })
+})
+
 describe('secret guard', () => {
   it.each([
     'VITE_GEMINI_API_KEY',

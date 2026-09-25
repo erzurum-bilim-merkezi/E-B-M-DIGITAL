@@ -44,6 +44,8 @@ export function MediaImage({
       alt={alt}
       loading="lazy"
       decoding="async"
+      // CORS mode: the service worker can cache it for offline play (opaque responses are not).
+      crossOrigin="anonymous"
       className={cn('block h-auto w-full rounded-[1.25rem] object-cover', className)}
     />
   )

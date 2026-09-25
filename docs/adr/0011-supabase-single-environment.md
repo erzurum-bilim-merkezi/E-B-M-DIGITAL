@@ -1,6 +1,6 @@
 # 0011. Supabase Free, tek ortam; personel oturumu sessionStorage; admin 2FA
 
-- **Durum:** Önerildi (F4/F12 — canlı ortam kapısı kullanıcı onayı bekliyor)
+- **Durum:** Kabul edildi (2026-09-25; uygulama ADR 0021, canlıya geçiş `docs/runbook/canliya-gecis.md`)
 - **Tarih:** 2026-09-24
 
 ## Bağlam

@@ -61,7 +61,10 @@ export function QrEntryPage() {
   if (resolution?.kind === 'step') {
     return <Navigate to={`/kit/${resolution.kitSlug}/${resolution.stepSlug}?giris=qr`} replace />
   }
-  if (resolution?.kind === 'kit') return <Navigate to={`/kit/${resolution.kitSlug}`} replace />
+  // The kit page decides by the kit's mode: "Bir QR yeter" goes on to the next card to play.
+  if (resolution?.kind === 'kit') {
+    return <Navigate to={`/kit/${resolution.kitSlug}?giris=qr`} replace />
+  }
 
   const message =
     resolution?.kind === 'inactive'

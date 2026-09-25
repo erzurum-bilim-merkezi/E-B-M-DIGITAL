@@ -99,7 +99,7 @@ export function StepEditor({ kit, step, issues, slugLocked, onChange }: StepEdit
           <Badge variant="primary">
             <span aria-hidden="true">{meta.emoji}</span> {meta.label}
           </Badge>
-          <Badge>QR {step.qrCode}</Badge>
+          {kit.qrEntryMode !== 'full' && <Badge>QR {step.qrCode}</Badge>}
           {step.aiGenerated && step.aiGenerated.fields.length > 0 && (
             <Badge variant="warning">Yapay zekâ içeriği · kontrol edin</Badge>
           )}

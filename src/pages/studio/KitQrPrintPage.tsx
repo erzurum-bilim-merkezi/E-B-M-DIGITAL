@@ -180,6 +180,7 @@ export function KitQrPrintPage() {
             template={template}
             labels={active}
             kitTitle={kit.data?.draft.title ?? ''}
+            entryMode={kit.data?.draft.qrEntryMode}
             labelSizeMm={sizeMm}
             columns={optionalNumber(grid.columns)}
             rows={optionalNumber(grid.rows)}

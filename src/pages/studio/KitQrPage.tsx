@@ -16,7 +16,7 @@ import { useKitQrLabels } from './components/useKitQrLabels'
 /** QR codes of a kit: preview, PNG/SVG per code, everything as a ZIP, print sheets (F9). */
 export function KitQrPage() {
   const { kitId = '' } = useParams()
-  const { kit, codes, active, retired } = useKitQrLabels(kitId)
+  const { kit, codes, active, retired, kitCodeOnly } = useKitQrLabels(kitId)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const pending = active.filter((label) => label.state === 'pending').length
   const slug = kit.data?.draft.slug ?? 'kit'
@@ -43,7 +43,9 @@ export function KitQrPage() {
         eyebrow={kit.data && <KitStatusBadge kit={kit.data} />}
         description={
           kit.data
-            ? `${kit.data.draft.title} · kit kodu ve her kart için bir QR. Kodlar hiçbir zaman yeniden kullanılmaz.`
+            ? kitCodeOnly
+              ? `${kit.data.draft.title} · tek kit QR'ı. Kâşifler okuttuktan sonra kartları sırayla tamamlar.`
+              : `${kit.data.draft.title} · kit kodu ve her kart için bir QR. Kodlar hiçbir zaman yeniden kullanılmaz.`
             : undefined
         }
         actions={
@@ -65,6 +67,14 @@ export function KitQrPage() {
           </>
         }
       />
+
+      {kitCodeOnly && (
+        <Alert variant="info" title="Bu kitte tek QR var">
+          Kit “Bir QR yeter, sırayla devam” modunda: kâşif kit QR'ını okutunca kartları QR okutmadan
+          sırayla tamamlar, bu yüzden kart QR'ları basılmaz. Her kartın ayrı QR'ı için editörün
+          Genel sekmesinden “Her kart kendi QR'ı ile” modunu seçin.
+        </Alert>
+      )}
 
       {pending > 0 && (
         <Alert variant="warning" title="Kartlar yayınlanınca etkinleşir">

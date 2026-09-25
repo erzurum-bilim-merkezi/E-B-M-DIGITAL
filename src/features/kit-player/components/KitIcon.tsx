@@ -25,6 +25,8 @@ function MediaIcon({
     <img
       src={resolved}
       alt={alt}
+      // CORS mode: the service worker can cache it for offline play (opaque responses are not).
+      crossOrigin="anonymous"
       className={cn('inline-block size-[1em] rounded-md object-cover', className)}
     />
   )

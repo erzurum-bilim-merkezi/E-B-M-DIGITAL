@@ -15,6 +15,9 @@ import { AppError } from '@/shared/api/errors'
 import { mockDoc, mockGate } from '@/shared/api/mock-db'
 import { MOCK_DOCS } from '@/shared/api/mock-tables'
 import { KIDS_QUERY_ROOT } from '@/shared/api/query-keys'
+import { isSupabaseBackend } from '@/shared/config/backend'
+
+import { createSupabaseContentSource } from './content.supabase'
 
 /**
  * Reads the published snapshot files (catalog.json, qr-index.json, kits/{slug}/latest.json,
@@ -69,7 +72,9 @@ function createMockContentSource(): ContentSource {
   }
 }
 
-export const contentSource: ContentSource = createMockContentSource()
+export const contentSource: ContentSource = isSupabaseBackend
+  ? createSupabaseContentSource()
+  : createMockContentSource()
 
 export const contentKeys = {
   all: [KIDS_QUERY_ROOT, 'content'] as const,

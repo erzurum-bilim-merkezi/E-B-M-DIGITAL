@@ -783,11 +783,15 @@ describe('publishingService', () => {
 
     it('archives a kit: out of the catalog, QR codes say it is no longer live', async () => {
       const kit = await publishedSample()
+      const pointer = mockDoc(MOCK_DOCS.latest(kit.slug), latestPointerSchema)
+      expect(pointer.get()).toBeDefined()
 
       const archived = await publishingService.archive(kit.id)
 
       expect(archived.status).toBe('archived')
       expect(catalogDoc.get()?.kits).toEqual([])
+      // Its address no longer opens it either.
+      expect(pointer.get()).toBeUndefined()
       expect(qrIndexDoc.get()?.codes['KC-01']).toMatchObject({ kitState: 'archived' })
       expect(await publishingService.archive(kit.id)).toEqual(archived)
     })
@@ -800,6 +804,7 @@ describe('publishingService', () => {
 
       expect(back.status).toBe('published')
       expect(catalogDoc.get()?.kits).toHaveLength(1)
+      expect(mockDoc(MOCK_DOCS.latest(kit.slug), latestPointerSchema).get()).toBeDefined()
       expect(await publishingService.unarchive(kit.id)).toEqual(back)
     })
 

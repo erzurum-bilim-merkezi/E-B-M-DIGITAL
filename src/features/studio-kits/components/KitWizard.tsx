@@ -357,7 +357,8 @@ export function KitWizard({
             </Field>
             <Field
               label="QR öneki"
-              description={`Kart kodları: ${prefix || '…'}-01, ${prefix || '…'}-02 …`}
+              // New kits start as "Bir QR yeter": the kit's own QR is the one to print.
+              description={`Kit QR kodu: ${prefix || '…'}`}
               error={prefixError}
               required
             >

@@ -35,18 +35,20 @@ test('Studio → publish → QR → Kâşif on a phone → activity back in the 
   await studio.getByRole('button', { name: 'Yayınla', exact: true }).click()
   await expect(studio.getByText('v1 yayınlandı')).toBeVisible()
 
-  // 2 · Download the QR codes and read the first card's code from its PNG.
+  // 2 · Download the QR codes: a new kit is "Bir QR yeter", so the ZIP holds the kit QR only.
   await studio.getByRole('link', { name: /QR/ }).first().click()
   await expect(studio.getByRole('heading', { level: 1, name: 'QR kodları' })).toBeVisible()
   const downloadPromise = studio.waitForEvent('download')
   await studio.getByRole('button', { name: 'Tümünü indir (ZIP)' }).click()
   const files = await readZip(await (await downloadPromise).path())
-  const firstCard = files.find((file) => /-01-/.test(file.name) && file.name.endsWith('.png'))
-  const url = decodePngQr(firstCard?.data ?? Buffer.alloc(0)) ?? ''
+  const pngs = files.filter((file) => file.name.endsWith('.png'))
+  expect(pngs).toHaveLength(1)
+  const url = decodePngQr(pngs[0]?.data ?? Buffer.alloc(0)) ?? ''
   const code = new URL(url).searchParams.get('q') ?? ''
-  expect(code).toMatch(/^[A-Z]{2,4}-01$/)
+  expect(code).toMatch(/^[A-Z]{2,4}$/)
 
-  // 3 · A child scans it with the phone camera (the QR opens the site root + ?q=).
+  // 3 · A child scans it with the phone camera (the QR opens the site root + ?q=) and lands on
+  // the kit's first card.
   const phone = await openDevice(browser, testInfo, pageErrors, devices['Pixel 7'])
   await phone.page.goto('aydinlatma')
   await transferState(studio, phone.page)

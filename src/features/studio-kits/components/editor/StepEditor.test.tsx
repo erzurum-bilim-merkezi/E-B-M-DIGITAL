@@ -5,6 +5,7 @@ import {
   BLOK_VITRINI,
   type AiField,
   type BlockType,
+  type KitDocument,
   type KitIcon,
   type KitIssue,
   type MediaRef,
@@ -103,17 +104,19 @@ function Harness({
   initial,
   issues,
   slugLocked,
+  kit,
   onStep,
 }: {
   initial: Step
   issues: KitIssue[]
   slugLocked: boolean
+  kit: KitDocument
   onStep: (step: Step) => void
 }) {
   const [step, setStep] = useState(initial)
   return (
     <StepEditor
-      kit={BLOK_VITRINI}
+      kit={kit}
       step={step}
       issues={issues}
       slugLocked={slugLocked}
@@ -131,7 +134,13 @@ function renderStepEditor(
     issues = [],
     slugLocked = false,
     services = SERVICES,
-  }: { issues?: KitIssue[]; slugLocked?: boolean; services?: EditorServices } = {},
+    kit = BLOK_VITRINI,
+  }: {
+    issues?: KitIssue[]
+    slugLocked?: boolean
+    services?: EditorServices
+    kit?: KitDocument
+  } = {},
 ) {
   const steps: Step[] = []
   const view = renderWithProviders(
@@ -140,6 +149,7 @@ function renderStepEditor(
         initial={initial}
         issues={issues}
         slugLocked={slugLocked}
+        kit={kit}
         onStep={(step) => steps.push(step)}
       />
     </EditorServicesProvider>,
@@ -150,13 +160,20 @@ function renderStepEditor(
 describe('StepEditor', () => {
   it('shows the block type, QR code and what the block does', () => {
     const step = sample('tap-reveal')
-    renderStepEditor(step)
+    renderStepEditor(step, { kit: { ...BLOK_VITRINI, qrEntryMode: 'focused' } })
 
     const meta = BLOCK_CATALOG['tap-reveal']
     expect(screen.getByText(meta.label)).toBeInTheDocument()
     expect(screen.getByText(`QR ${step.qrCode}`)).toBeInTheDocument()
     expect(screen.getByRole('note')).toHaveTextContent(meta.description)
     expect(screen.getByRole('textbox', { name: 'Soru / kart başlığı' })).toHaveValue(step.title)
+  })
+
+  it('hides the card QR code in single-QR kits, where it is never printed', () => {
+    const step = sample('tap-reveal')
+    renderStepEditor(step, { kit: { ...BLOK_VITRINI, qrEntryMode: 'full' } })
+
+    expect(screen.queryByText(`QR ${step.qrCode}`)).not.toBeInTheDocument()
   })
 
   it('keeps the card address in step with the title before the first publish', async () => {

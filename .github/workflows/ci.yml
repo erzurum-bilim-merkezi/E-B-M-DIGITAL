@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Feature branches get the full rehearsal before a PR exists (the Pages deploy stays main-only).
+    branches: [main, 'feat/**', 'fix/**']
   pull_request:
 
 concurrency:
@@ -31,7 +32,10 @@ jobs:
       - run: npm run lint
       - run: npm run lint:boundaries
       - run: npm run format:check
+      - run: npm run sync:edge:check
       - run: npm run test:coverage
+      # Migrations, RLS, grants and RPCs on PGlite (the real stack runs them in the supabase job).
+      - run: npm run test:db
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v7
@@ -62,6 +66,82 @@ jobs:
           name: playwright-report
           path: playwright-report
           retention-days: 7
+
+  supabase:
+    # "Plan 3 · Prova" (ADR 0016): the migrations, database tests, Edge Functions and the golden
+    # journey on a LOCAL Supabase stack. Nothing here ever touches the live project.
+    name: Supabase rehearsal (local stack)
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Edge Functions type-check
+        run: |
+          for dir in supabase/functions/*/; do
+            [ -f "$dir/index.ts" ] && (cd "$dir" && deno check index.ts)
+          done
+      - name: Local function secrets (fake AI provider, never a real key)
+        run: echo 'AI_PROVIDER=fake' > supabase/functions/.env
+      - name: Start the local stack
+        run: supabase start -x studio,imgproxy,realtime,logflare,vector,supavisor,mailpit
+      - name: Apply every migration from scratch, twice
+        run: supabase db reset && supabase db reset
+      - name: Database lint
+        # Every finding becomes an annotation, so it is readable on the run page.
+        run: |
+          supabase db lint --level warning -o json > db-lint.json || true
+          node -e "
+            const results = JSON.parse(require('fs').readFileSync('db-lint.json', 'utf8') || '[]')
+            let errors = 0
+            for (const result of results) for (const issue of result.issues ?? []) {
+              const level = issue.level === 'error' ? 'error' : 'warning'
+              if (level === 'error') errors++
+              console.log('::' + level + '::' + result.function + ': ' + issue.message + (issue.context ? ' — ' + String(issue.context).replace(/\n/g, ' ') : '') + (issue.statement ? ' [' + JSON.stringify(issue.statement) + ']' : ''))
+            }
+            process.exit(errors > 0 ? 1 : 0)
+          "
+      - name: Stack settings for the next steps
+        run: |
+          eval "$(supabase status -o env)"
+          {
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "SUPABASE_DB_URL=$DB_URL"
+            echo "TEST_DB_URL=$DB_URL"
+            echo "E2E_SUPABASE_URL=$API_URL"
+            echo "E2E_SUPABASE_KEY=${PUBLISHABLE_KEY:-$ANON_KEY}"
+          } >> "$GITHUB_ENV"
+      - name: Database tests on the real stack
+        run: npm run test:db
+      - name: Seed Studio accounts
+        run: node e2e/supabase/seed.ts
+      - run: npx playwright install --with-deps chromium
+      - name: Golden journey on Supabase
+        run: npx playwright test
+        env:
+          E2E_SUPABASE: '1'
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-supabase
+          path: playwright-report
+          retention-days: 7
+      - name: Edge Function logs
+        if: failure()
+        run: docker logs "$(docker ps --filter name=supabase_edge_runtime -q | head -1)" 2>&1 | tail -200 || true
 
   audit:
     name: Dependency audit

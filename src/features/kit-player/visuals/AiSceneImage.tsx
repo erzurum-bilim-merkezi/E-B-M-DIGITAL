@@ -13,6 +13,8 @@ function Frame({ url, alt, visible }: { url: string | undefined; alt: string; vi
       alt={visible ? alt : ''}
       aria-hidden={visible ? undefined : true}
       decoding="async"
+      // CORS mode: the service worker can cache it for offline play (opaque responses are not).
+      crossOrigin="anonymous"
       className={cn(
         'absolute inset-0 size-full object-contain transition-opacity duration-500 ease-out-quart',
         visible ? 'opacity-100' : 'opacity-0',

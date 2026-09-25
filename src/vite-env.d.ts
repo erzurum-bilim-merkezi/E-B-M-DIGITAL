@@ -8,6 +8,9 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string
   readonly VITE_COMING_SOON?: string
   readonly VITE_PUBLIC_SITE_URL?: string
+  readonly VITE_BACKEND?: 'mock' | 'supabase'
+  readonly VITE_SUPABASE_URL?: string
+  readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string
 }
 
 interface ImportMeta {

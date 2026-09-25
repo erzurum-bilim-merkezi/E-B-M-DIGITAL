@@ -149,6 +149,12 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
+      // Supabase adapters are unit-tested against MSW at the local-stack address (never the live
+      // project). VITE_BACKEND stays "mock": the app under test runs on the mock backend.
+      env: {
+        VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_unit-tests-only-000000',
+      },
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
       css: true,
       restoreMocks: true,

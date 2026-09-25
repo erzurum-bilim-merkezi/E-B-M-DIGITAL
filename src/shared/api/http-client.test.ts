@@ -17,6 +17,14 @@ describe('buildUrl', () => {
     expect(url.searchParams.has('empty')).toBe(false)
     expect(url.searchParams.has('none')).toBe(false)
   })
+
+  it('keeps absolute URLs (published snapshots on the Supabase CDN)', () => {
+    const url = buildUrl('https://abcd.supabase.co/storage/v1/object/public/published/catalog.json')
+
+    expect(url.href).toBe(
+      'https://abcd.supabase.co/storage/v1/object/public/published/catalog.json',
+    )
+  })
 })
 
 describe('apiClient', () => {

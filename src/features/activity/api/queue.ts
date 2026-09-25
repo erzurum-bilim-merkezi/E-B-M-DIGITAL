@@ -27,7 +27,11 @@ export const eventQueue = createStoredValue(
   [],
 )
 
-type FlushListener = (result: { sent: number; newBadges: EarnedBadge[] }) => void
+/**
+ * Called for every batch the server accepted, right before it leaves the queue: whatever shows
+ * progress can take the events over first, so nothing looks undone while fresh progress loads.
+ */
+type FlushListener = (result: { events: ActivityEvent[]; newBadges: EarnedBadge[] }) => void
 const listeners = new Set<FlushListener>()
 
 export function onFlushed(listener: FlushListener) {
@@ -87,8 +91,6 @@ export function scheduleFlush(delayMs = 0) {
 export async function flushQueue() {
   if (flushing || !sink || typeof navigator === 'undefined' || !navigator.onLine) return
   flushing = true
-  let sent = 0
-  const newBadges: EarnedBadge[] = []
   try {
     for (;;) {
       const batch = eventQueue.get().slice(0, MAX_EVENTS_PER_BATCH)
@@ -96,8 +98,7 @@ export async function flushQueue() {
       try {
         // oxlint-disable-next-line no-await-in-loop -- batches go out one at a time, oldest first (queue order, server rate limit)
         const result = await sink.send(batch)
-        newBadges.push(...result.newBadges)
-        sent += batch.length
+        for (const listener of listeners) listener({ events: batch, newBadges: result.newBadges })
       } catch (error) {
         // A batch the server can never accept (e.g. a deleted member) must not block the queue.
         if (!(isAppError(error) && (error.code === 'validation' || error.code === 'forbidden')))
@@ -107,7 +108,6 @@ export async function flushQueue() {
       eventQueue.set(eventQueue.get().filter((event) => !done.has(event.clientEventId)))
     }
     backoffMs = 0
-    if (sent > 0) for (const listener of listeners) listener({ sent, newBadges })
   } catch {
     backoffMs = Math.min(60_000, backoffMs ? backoffMs * 2 : 2_000)
     scheduleFlush(backoffMs)

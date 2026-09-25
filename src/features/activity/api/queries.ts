@@ -60,6 +60,20 @@ function optimisticProgress(explorerId: string, events: readonly ActivityEvent[]
   return byKit
 }
 
+/** A member's progress rows with events folded in, one row per kit. */
+function withEvents(
+  rows: readonly ExplorerProgress[],
+  explorerId: string,
+  events: readonly ActivityEvent[],
+) {
+  const byKit = new Map(rows.map((row) => [row.kitId, row]))
+  for (const [kitId, local] of optimisticProgress(explorerId, pendingEvents(events, explorerId))) {
+    const server = byKit.get(kitId)
+    byKit.set(kitId, server ? mergeProgress(server, local) : local)
+  }
+  return byKit
+}
+
 /** Server progress merged with not-yet-sent events: ✓ marks never wait for the network. */
 export function useExplorerProgress(explorerId: string | null | undefined) {
   const query = useQuery({
@@ -67,20 +81,13 @@ export function useExplorerProgress(explorerId: string | null | undefined) {
     enabled: Boolean(explorerId),
   })
   const queue = eventQueue.useValue()
-  const merged = useMemo(() => {
-    const map = new Map<string, ExplorerProgress>()
-    for (const row of query.data ?? []) map.set(row.kitId, row)
-    if (explorerId) {
-      for (const [kitId, local] of optimisticProgress(
-        explorerId,
-        pendingEvents(queue, explorerId),
-      )) {
-        const server = map.get(kitId)
-        map.set(kitId, server ? mergeProgress(server, local) : local)
-      }
-    }
-    return map
-  }, [explorerId, query.data, queue])
+  const merged = useMemo(
+    () =>
+      explorerId
+        ? withEvents(query.data ?? [], explorerId, queue)
+        : new Map<string, ExplorerProgress>(),
+    [explorerId, query.data, queue],
+  )
   return {
     progress: merged,
     isPending: Boolean(explorerId) && query.isPending,
@@ -174,7 +181,14 @@ export function useActivitySync(onNewBadges?: (badges: EarnedBadge[]) => void) {
     const onOnline = () => void flushQueue()
     window.addEventListener('online', onOnline)
     const timer = window.setInterval(() => void flushQueue(), 20_000)
-    const unsubscribe = onFlushed(({ newBadges }) => {
+    const unsubscribe = onFlushed(({ events, newBadges }) => {
+      // The sent events join the cached progress before they leave the queue: a finished card
+      // or kit never looks unfinished (and is never reported again) while the refetch runs.
+      for (const explorerId of new Set(events.map((event) => event.explorerId))) {
+        queryClient.setQueryData(progressQueryOptions(explorerId).queryKey, (rows) =>
+          rows ? [...withEvents(rows, explorerId, events).values()] : rows,
+        )
+      }
       void queryClient.invalidateQueries({ queryKey: progressKeys.all })
       if (newBadges.length > 0) onNewBadges?.(newBadges)
     })

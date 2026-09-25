@@ -19,16 +19,30 @@ workflow'dur. Canlı veritabanına elle SQL çalıştırılmaz (ADR 0016).
 
 - **Allow anonymous sign-ins: AÇIK.** Çocuk cihazları anonim oturum açar.
 - **Allow new users to sign up: AÇIK.** Anonim giriş buna bağlıdır.
-- **Email provider: açık kalır.** Personel e-posta + parola ile girer.
-  - E-posta ile kendi kendine kayıt seçeneği varsa kapat. Personel hesapları yalnızca Studio'dan
-    ve `bootstrap-admin` ile açılır.
-  - Kayıt olmuş yabancı bir e-posta hesabı hiçbir veriyi göremez (RLS), ama gereksiz kullanıcı
-    sayılır.
+- **Email provider: AÇIK kalmalı.** Personel e-posta + parola ile girer; kapatılırsa Studio'ya
+  kimse giremez.
+  - Personel hesapları yalnızca Studio'dan ve `bootstrap-admin` ile açılır.
+  - Dışarıdan e-postayla kaydolan bir hesap hiçbir veriyi göremez (RLS), ama gereksiz kullanıcı
+    sayılır. **Authentication → Users**'ta tanımadığın bir e-posta görürsen sil.
 - **Confirm email: kapalı** (Free planda e-posta yalnızca ekip üyelerine gider).
+- Studio'da bir personel eklerken "Bu e-posta ile bir kullanıcı zaten var" uyarısı çıkabilir.
+  Bu, o e-postayla dışarıdan hesap açılmış demektir. **Authentication → Users**'tan o hesabı
+  sil, sonra kişiyi Studio'dan yeniden ekle.
 
 **Authentication → Multi-Factor**
 
 - **TOTP: açık** (varsayılan).
+- Bir hesapta en fazla **2** doğrulayıcı olabilir (Maximum enrolled factors).
+
+**Authentication → Attack Protection**
+
+- **CAPTCHA: kapalı kalsın.** Uygulama henüz CAPTCHA jetonu göndermez. Açılırsa çocuk
+  cihazları ve personel giriş yapamaz.
+
+**Project Settings → Data API**
+
+- **Exposed schemas:** yalnızca `public` kalsın. `graphql_public` varsa listeden çıkar.
+  Uygulama GraphQL kullanmaz.
 
 **Authentication → Policies / Passwords**
 
@@ -164,5 +178,9 @@ Build, mock arka uçla açılışı reddeder. `VITE_BACKEND=supabase` olduğu i�
 - **Yedekler:** her `db-migrate` öncesi otomatik alınır.
   - Açmak için: `age -d -i kasif-yedek.key backup-….tar.gz.age > yedek.tar.gz`
 - **2FA kaybı:** **Actions → "Reset an admin's 2FA (live, emergency)"** → e-posta → onay.
+  - Workflow doğrulayıcıları siler ve hesabın **tüm açık oturumlarını kapatır**. Açık kalmış bir
+    sekme en geç 30 dakika içinde düşer.
+  - Telefon çalındıysa parolayı da değiştir: başka bir admin Studio → Kullanıcılar →
+    **Parola sıfırla** ile geçici parola verir.
 - **Yapay zekâyı kapatmak:** Studio → Ayarlar → Yapay zekâ → Kapalı. Tamamen kapatmak için
   Supabase'de `AI_PROVIDER=off`.

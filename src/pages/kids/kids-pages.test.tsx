@@ -173,8 +173,14 @@ describe('Kâşif app', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Tebrikler Mert!' })).toBeVisible()
     await user.click(screen.getByRole('link', { name: /Sertifikamı gör/ }))
+    // The certificate page is a lazy route with the PNG renderer: its first load can take a
+    // while on a busy CI machine.
     expect(
-      await screen.findByRole('heading', { level: 1, name: /Küçük Çiftçiler sertifikası/ }),
+      await screen.findByRole(
+        'heading',
+        { level: 1, name: /Küçük Çiftçiler sertifikası/ },
+        { timeout: 15_000 },
+      ),
     ).toBeInTheDocument()
   })
 

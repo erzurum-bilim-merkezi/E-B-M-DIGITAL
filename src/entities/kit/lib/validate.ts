@@ -23,6 +23,14 @@ function isBlank(value: string | undefined) {
   return !value || value.trim().length === 0
 }
 
+const BLANK_PREPARATION_LINE = 'Boş malzeme ya da güvenlik satırı var.'
+
+/** Same text ignoring case and surrounding spaces (Turkish casing: "Işık" = "IŞIK"). */
+function hasDuplicates(texts: readonly string[]) {
+  const keys = texts.map((text) => text.trim().toLocaleLowerCase('tr'))
+  return new Set(keys).size !== keys.length
+}
+
 function checkVisual(step: Step, visual: Visual | undefined, issues: KitIssue[]) {
   const meta = BLOCK_CATALOG[step.type]
   const at = { tab: 'kartlar' as const, stepId: step.id, field: 'visual' }
@@ -149,24 +157,29 @@ function checkBlock(step: Step, issues: KitIssue[]) {
       if (step.options.some((option) => isBlank(option.label)))
         error('options', 'Boş cevap seçeneği var.')
       if (!step.options.some((option) => option.id === step.correctOptionId)) {
-        error('options', 'Doğru cevabı işaretleyin.')
+        error('correctOptionId', 'Doğru cevabı işaretleyin.')
       }
       break
     case 'sequence':
       if (step.items.length < 3) error('items', 'Sıralama için en az 3 adım ekleyin.')
       if (step.items.some((item) => isBlank(item.label))) error('items', 'Boş sıralama adımı var.')
+      else if (hasDuplicates(step.items.map((item) => item.label))) {
+        error('items', 'Sıralama adımları birbirinden farklı olmalı.')
+      }
       break
     case 'matching': {
       if (step.pairs.length < 2) error('pairs', 'En az 2 eş ekleyin.')
       if (step.pairs.some((pair) => isBlank(pair.left) || isBlank(pair.right))) {
         error('pairs', 'Her eşin iki tarafı da dolu olmalı.')
       }
-      const rights = step.pairs.map((pair) => pair.right.trim().toLocaleLowerCase('tr'))
-      if (new Set(rights).size !== rights.length)
+      if (hasDuplicates(step.pairs.map((pair) => pair.right)))
         error('pairs', 'Sağ taraftaki eşler birbirinden farklı olmalı.')
       break
     }
     case 'experiment':
+      // Reported per list, so "Git" reaches (and marks) the list that has the blank line.
+      if (step.materials.some(isBlank)) error('materials', BLANK_PREPARATION_LINE)
+      if (step.safety.some(isBlank)) error('safety', BLANK_PREPARATION_LINE)
       if (step.steps.length < 1) error('steps', 'En az bir deney adımı ekleyin.')
       if (step.steps.some((item) => isBlank(item.text))) error('steps', 'Boş deney adımı var.')
       break

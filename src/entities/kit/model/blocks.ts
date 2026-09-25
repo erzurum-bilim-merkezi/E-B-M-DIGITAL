@@ -171,8 +171,8 @@ export const sequenceStepSchema = z.object({
   ...stepBase,
   type: z.literal('sequence'),
   prompt: z.string().max(120),
-  /** Stored in the correct order; the player shuffles deterministically. */
-  items: z.array(sequenceItemSchema).max(6),
+  /** Stored in the correct order; the player shuffles deterministically. 8 fits the planets. */
+  items: z.array(sequenceItemSchema).max(8),
   successMessage: z.string().max(160),
 })
 

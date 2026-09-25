@@ -68,6 +68,9 @@ export const badgeSchema = z.object({
 })
 export type KitBadge = z.infer<typeof badgeSchema>
 
+/** Most cards one kit may hold (schema limit; the editor stops adding and restoring here). */
+export const MAX_KIT_STEPS = 30
+
 export const materialSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]{1,40}$/),
   name: z.string().max(60),
@@ -103,7 +106,7 @@ const kitDocumentShape = z.object({
   /** QR entry: `focused` shows only the scanned card (E-B-M behaviour), `full` the whole kit. */
   qrEntryMode: z.enum(QR_ENTRY_MODES),
   badge: badgeSchema,
-  steps: z.array(stepSchema).max(30),
+  steps: z.array(stepSchema).max(MAX_KIT_STEPS),
 })
 
 /**

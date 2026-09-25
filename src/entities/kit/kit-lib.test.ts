@@ -22,6 +22,7 @@ import {
   shuffleStable,
   slugDraftTr,
   slugifyTr,
+  stepSlugSchema,
   suggestQrPrefix,
   uniqueSlug,
   youtubeEmbedUrl,
@@ -50,6 +51,21 @@ describe('slugifyTr', () => {
   it('makes slugs unique', () => {
     expect(uniqueSlug('Tohum', new Set(['tohum', 'tohum-2']))).toBe('tohum-3')
     expect(uniqueSlug('???', new Set())).toBe('kart')
+  })
+
+  it.each([
+    ['A', 'kart-a'],
+    ['Ö', 'kart-o'],
+    ['Tamamlandı', 'tamamlandi-2'],
+  ])('keeps %s a valid card address (%s)', (title, expected) => {
+    const slug = uniqueSlug(title, new Set())
+    expect(slug).toBe(expected)
+    expect(stepSlugSchema.safeParse(slug).success).toBe(true)
+  })
+
+  it('skips taken and reserved addresses together', () => {
+    expect(uniqueSlug('Tamamlandı', new Set(['tamamlandi-2']))).toBe('tamamlandi-3')
+    expect(uniqueSlug('A', new Set(['kart-a']), 'kit')).toBe('kit-a')
   })
 })
 

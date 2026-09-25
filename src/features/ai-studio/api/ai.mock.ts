@@ -1,22 +1,6 @@
 import { z } from 'zod'
 
-import {
-  BLOCK_CATALOG,
-  checkAiSvg,
-  createDefaultStep,
-  findPii,
-  formatCardCode,
-  newItemId,
-  newStepId,
-  sequenceItemIcon,
-  shuffleStable,
-  svgDescription,
-  uniqueSlug,
-  AI_ICON_MAX_BYTES,
-  KIT_SCHEMA_VERSION,
-  type BlockType,
-  type Step,
-} from '@/entities/kit'
+import { checkAiSvg, findPii, svgDescription, AI_ICON_MAX_BYTES } from '@/entities/kit'
 import {
   appSettingsSchema,
   DEFAULT_APP_SETTINGS,
@@ -32,15 +16,17 @@ import { MOCK_DOCS, MOCK_TABLES } from '@/shared/api/mock-tables'
 import { istanbulDayKey } from '@/shared/lib/format'
 import { readStorage } from '@/shared/lib/storage'
 
+import { composeKit, kitBlockTypes, topicKitMeta } from './compose'
 import {
   fakeCardText,
   fakeIconSvg,
   fakeSceneSvg,
   FAKE_TRIGGERS,
   maliciousSvg,
-  pickEmoji,
 } from './fake-provider'
 import type { AiQuota, AiService, AiStage, RunOptions } from './port'
+
+export { AI_TIMEOUT_MS } from './compose'
 
 const usageSchema = z.object({
   id: z.uuid(),
@@ -53,9 +39,6 @@ const usageSchema = z.object({
 const usageTable = mockTable(MOCK_TABLES.aiUsage, usageSchema)
 const settingsDoc = mockDoc(MOCK_DOCS.settings, appSettingsSchema)
 const mediaTable = mockTable(MOCK_TABLES.mediaAssets, mediaAssetSchema)
-
-/** Edge Function cut-off (Free plan: 150 s wall clock). */
-export const AI_TIMEOUT_MS = 120_000
 
 function settings() {
   return settingsDoc.get() ?? DEFAULT_APP_SETTINGS
@@ -183,104 +166,6 @@ async function storeSvg(
   return asset
 }
 
-function title0(topic: string) {
-  return topic.charAt(0).toLocaleUpperCase('tr') + topic.slice(1)
-}
-
-const KIT_BLOCK_ROTATION: BlockType[] = [
-  'info',
-  'tap-reveal',
-  'choose-correct',
-  'quiz',
-  'compare-cards',
-  'sequence',
-  'stage-slider',
-  'matching',
-]
-
-function applyText(step: Step, topic: string): Step {
-  const text = fakeCardText(topic, step.type)
-  const base = {
-    ...step,
-    title: text.title,
-    answer: text.answer,
-    narration: text.narration,
-    hint: text.hint,
-    celebration: text.celebration,
-  }
-  const fields: NonNullable<Step['aiGenerated']>['fields'] = [
-    'title',
-    'answer',
-    'narration',
-    'hint',
-    'celebration',
-  ]
-  if (base.type === 'info')
-    return { ...base, body: text.answer, aiGenerated: { fields: [...fields, 'body'] } }
-  // The draft lists the correct options first: shuffle (stable per topic) and give every
-  // option the same look, so neither position, icon nor color gives the answer away.
-  if (base.type === 'choose-correct') {
-    const icon = pickEmoji(topic)
-    const choices = shuffleStable(
-      text.options.map((label, index) => ({ label, correct: index < text.correctCount })),
-      `${topic}:choose-correct`,
-    )
-    return {
-      ...base,
-      options: choices.map(({ label, correct }) => ({
-        id: newItemId('o'),
-        label,
-        icon,
-        color: 'sky' as const,
-        correct,
-        feedback: correct ? `${label} doğru!` : `${label} işe yaramaz! 😄`,
-      })),
-      aiGenerated: { fields: [...fields, 'options'] },
-    }
-  }
-  if (base.type === 'quiz') {
-    const answers = shuffleStable(
-      text.options.map((label, index) => ({
-        id: newItemId('q'),
-        label,
-        correct: index < text.correctCount,
-      })),
-      `${topic}:quiz`,
-    )
-    return {
-      ...base,
-      question: text.title,
-      options: answers.map(({ id, label }) => ({ id, label })),
-      correctOptionId: answers.find((answer) => answer.correct)?.id ?? '',
-      explanation: text.answer.replace(/\*\*/g, ''),
-      aiGenerated: { fields: [...fields, 'options'] },
-    }
-  }
-  if (base.type === 'sequence') {
-    return {
-      ...base,
-      items: text.options.map((label, index) => ({
-        id: newItemId('s'),
-        label,
-        icon: sequenceItemIcon(index),
-      })),
-      aiGenerated: { fields: [...fields, 'options'] },
-    }
-  }
-  if (base.type === 'matching') {
-    const pairs = []
-    for (let i = 0; i + 1 < text.options.length; i += 2) {
-      pairs.push({
-        id: newItemId('p'),
-        left: text.options[i] ?? '',
-        right: text.options[i + 1] ?? '',
-      })
-    }
-    return { ...base, pairs, aiGenerated: { fields: [...fields, 'options'] } }
-  }
-  return { ...base, aiGenerated: { fields } }
-}
-
 export function createMockAiService(): AiService {
   return {
     async quota() {
@@ -402,54 +287,9 @@ export function createMockAiService(): AiService {
       const { record } = begin('kit', request.topic)
       await simulate(options, ['queued', 'drawing', 'checking'])
       const topic = request.topic.trim()
-      const title =
-        (topic.charAt(0).toLocaleUpperCase('tr') + topic.slice(1)).slice(0, 60) || 'Yeni kit'
-      const cardCount = Math.min(12, Math.max(2, request.cardCount))
-      const slugs = new Set<string>()
-      const titles = new Set<string>()
-      const steps = Array.from({ length: cardCount }, (_, index) => {
-        const type = KIT_BLOCK_ROTATION[index % KIT_BLOCK_ROTATION.length] ?? 'info'
-        const drafted = applyText(
-          createDefaultStep(type, {
-            id: newStepId(),
-            slug: `kart-${index + 1}`,
-            qrCode: formatCardCode('XX', index + 1),
-          }),
-          topic,
-        )
-        const cardTitle = titles.has(drafted.title)
-          ? `${title0(topic)} · ${BLOCK_CATALOG[type].label}`.slice(0, 80)
-          : drafted.title
-        titles.add(cardTitle)
-        const slug = uniqueSlug(cardTitle, slugs)
-        slugs.add(slug)
-        return { ...drafted, title: cardTitle, slug }
-      })
+      const cards = kitBlockTypes(request.cardCount).map((type) => fakeCardText(topic, type))
       record('ok')
-      return {
-        schemaVersion: KIT_SCHEMA_VERSION,
-        version: 0,
-        title,
-        tagline: `${request.ageMin}–${request.ageMax} yaş için ${title.toLocaleLowerCase('tr')} keşfi`,
-        description: `Yapay zekâ ile hazırlanan taslak: **${title}** hakkında ${cardCount} kartlık bir keşif. Yayından önce içeriği kontrol edin.`,
-        icon: { kind: 'emoji', value: pickEmoji(topic) },
-        category: 'other',
-        ageRange: { min: request.ageMin, max: request.ageMax },
-        durationMinutes: cardCount * 3,
-        theme: { preset: 'space', font: 'playful', motion: 'full' },
-        learningObjectives: [`${title} konusunu gözlem ve etkinliklerle keşfeder.`],
-        materials: [],
-        safetyNotes: [],
-        qrSequence: cardCount,
-        qrEntryMode: 'full',
-        badge: {
-          name: `${title} Kâşifi`.slice(0, 30),
-          emoji: '🏅',
-          color: 'indigo',
-          description: 'Tüm kartları tamamladın!',
-        },
-        steps,
-      }
+      return composeKit(request, topicKitMeta(request), cards)
     },
   }
 }

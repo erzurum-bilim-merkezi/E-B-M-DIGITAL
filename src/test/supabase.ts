@@ -69,6 +69,43 @@ export function table(name: string, rows: unknown[]) {
   return queries
 }
 
+/**
+ * Answers `functions.invoke(name)` with the resolver's JSON (status 200); the resolver gets the
+ * JSON body the adapter sent. Returns the bodies, in call order.
+ */
+export function edgeFunction(name: string, resolver: RpcResolver) {
+  const bodies: Record<string, unknown>[] = []
+  server.use(
+    http.post(`${SUPABASE_URL}/functions/v1/${name}`, async ({ request }) => {
+      const body: unknown = await request.json().catch(() => ({}))
+      const args = typeof body === 'object' && body !== null ? { ...body } : {}
+      bodies.push(args)
+      return jsonBody(resolver(args))
+    }),
+  )
+  return bodies
+}
+
+/** An Edge Function refusing with its JSON error (`errorResponse` of supabase/functions/_shared). */
+export function edgeFunctionError(
+  name: string,
+  status: number,
+  code: string,
+  message: string,
+  details?: Record<string, unknown>,
+) {
+  server.use(
+    http.post(`${SUPABASE_URL}/functions/v1/${name}`, () =>
+      HttpResponse.json(
+        JSON.parse(
+          JSON.stringify(details ? { code, message, details } : { code, message }),
+        ) as Json,
+        { status },
+      ),
+    ),
+  )
+}
+
 /** A public file in a bucket (`status` 400 = missing object, like Storage answers). */
 export function publicFile(bucket: string, path: string, body: unknown, status = 200) {
   server.use(

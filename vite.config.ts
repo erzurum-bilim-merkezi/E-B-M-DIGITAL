@@ -111,6 +111,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: resolveBasePath(),
+    // Stored query snapshots of one build are never read by another (src/app/providers).
+    define: { KASIF_BUILD_ID: JSON.stringify(new Date().toISOString()) },
     plugins: [
       react(),
       tailwindcss(),

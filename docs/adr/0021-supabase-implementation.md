@@ -61,6 +61,13 @@ test edilmiş davranışı** esas alındı; plandan ayrılan kararlar burada kay
 - **Oturum anahtarları** `kasif:sb-auth:staff` ve `kasif:sb-auth:kid`'dir. Mock'un
   `kasif:auth:*` değerleri, mock sürümü çalıştırmış bir tablette supabase-js'e oturum diye
   verilmez.
+- **Kâşif çevrimdışı da açılır:**
+  - Kişisel cihazda üyeler, ilerleme ve rozetler `localStorage`'da saklanır
+    (`kasif:kids-queries`). Anlık görüntü her derlemede geçersizleşir ve 30 günden eskisi silinir.
+  - Merkez tabletinde ve Studio verisinde hiçbir şey saklanmaz. Kit dosyaları service worker
+    önbelleğinden gelir.
+  - Süresi dolmuş ama çevrimdışı yenilenemeyen cihaz oturumu "oturum yok" sayılmaz, ağ hatası
+    sayılır. Ekrandaki üyeler ve ilerleme kalır, yeni bir anonim cihaz açılmaz.
 - **Supabase Auth üzerinden yapılan doğrudan değişiklikler de kayda geçer:** Parola değişimi ve
   doğrulayıcı ekleme/silme `audit_log`'a yazılır. Bir hesapta en fazla 2 doğrulayıcı olabilir.
 - **Bilinerek kabul edilen riskler (v2'de ele alınır):**

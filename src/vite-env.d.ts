@@ -16,3 +16,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** Set by vite.config.ts at build time: tells one build's stored snapshots from another's. */
+declare const KASIF_BUILD_ID: string

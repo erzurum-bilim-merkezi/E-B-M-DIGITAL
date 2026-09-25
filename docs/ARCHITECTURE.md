@@ -10,7 +10,9 @@
 ├──────────────────────────────────────────────┤
 │ features  dikey dilimler (iş yetenekleri)     │
 ├──────────────────────────────────────────────┤
-│ shared    ui · api · config · lib             │
+│ entities  saf alan modelleri (zod)            │
+├──────────────────────────────────────────────┤
+│ shared    ui · api · config · lib · hooks     │
 └──────────────────────────────────────────────┘
         bağımlılıklar yalnızca aşağı yönlü ↓
 ```
@@ -21,8 +23,22 @@
 | Feature dışından erişim yalnızca `@/features/<ad>` (index.ts) ile | Feature içi yapı özgürce değişebilir      |
 | Feature'lar birbirinin iç dosyalarını import etmez                | Dilimler bağımsız geliştirilir ve silinir |
 | `shared/` domain bilmez                                           | Gerçekten yeniden kullanılabilir kalır    |
+| `entities/` saftır: yalnızca `zod` ve göreli `.ts` import eder    | Aynı kurallar Deno/Edge'de de çalışır     |
 
 Bu kurallar `npm run lint:boundaries` ile CI'da zorlanır ([ADR 0003](adr/0003-feature-sliced-architecture.md)).
+
+## Kâşif ürün haritası
+
+| Katman     | İçerik                                                                                                   |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| `entities` | `kit` (13 blok, QR, doğrulama, yayın, şablonlar, örnek kitler) · `explorer` · `activity` · `studio`      |
+| `features` | auth · studio-kits (editör) · media-library · ai-studio · kit-catalog · kit-player · explorer · activity |
+|            | analytics · settings · qr-print · qr-entry · health (referans)                                           |
+| `pages`    | `kids/` (Kâşif: `/`) · `studio/` (Kâşif Studio: `/studio`) · `coming-soon/`                              |
+| `app`      | rotalar + korumalar, KidsLayout / StudioLayout, komut paleti, mock arka uç seed'i                        |
+
+Veri erişimi özellik **port**'ları üzerindendir; bugün tarayıcıda çalışan mock adapter'lar kullanılır
+([ADR 0015](adr/0015-data-access.md)). Kararların tamamı: [docs/adr](adr/).
 
 ## Bir feature'ın anatomisi
 
@@ -85,11 +101,11 @@ semantik token kullanır; tema değişimi token seviyesinde çözülür. Ayrınt
 
 ## Test stratejisi
 
-| Seviye              | Araç                           | Kapsam                                     |
-| ------------------- | ------------------------------ | ------------------------------------------ |
-| Birim / entegrasyon | Vitest + Testing Library + MSW | Bileşen davranışı, hook'lar, API katmanı   |
-| Uçtan uca           | Playwright (masaüstü + mobil)  | Kritik kullanıcı akışları                  |
-| Erişilebilirlik     | axe + Playwright               | Her sayfa, açık ve koyu temada WCAG 2.2 AA |
+| Seviye              | Araç                             | Kapsam                                                              |
+| ------------------- | -------------------------------- | ------------------------------------------------------------------- |
+| Birim / entegrasyon | Vitest + Testing Library + MSW   | Bileşen davranışı, hook'lar, mock servisler, sayfalar (`renderApp`) |
+| Uçtan uca           | Playwright, Pages benzeri sunucu | Kâşif (mobil/tablet/masaüstü), Studio, iki cihazlı yolculuklar      |
+| Erişilebilirlik     | axe + Playwright                 | Tüm rotalar ve 13 kart türü, açık ve koyu temada WCAG 2.2 AA        |
 
 Ağ istekleri testlerde MSW ile taklit edilir; tanımsız bir istek testi düşürür.
 
@@ -121,6 +137,7 @@ ilk boyamada beyaz yanıp sönme olmaz. Karar ve sınırlamalar:
 ## Güvenlik
 
 - Kaynak haritaları üretilir ama bundle'dan referanslanmaz ve nginx tarafından servis edilmez.
-- CSP, HSTS, `X-Frame-Options`, `nosniff` ve Referrer-Policy
-  [security-headers.conf](../docker/nginx/security-headers.conf) içindedir.
+- CSP tek kaynaktan gelir ([csp.ts](../src/shared/config/csp.ts)): build `<meta>` olarak yazar,
+  `npm run csp:nginx` [security-headers.conf](../docker/nginx/security-headers.conf)'u üretir
+  (HSTS, `X-Frame-Options`, `nosniff`, Referrer-Policy, Permissions-Policy dahil) — ADR 0013.
 - Container root olmayan kullanıcıyla çalışır. Ayrıntılar: [SECURITY.md](../SECURITY.md).

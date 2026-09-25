@@ -2,61 +2,89 @@ import { defineConfig, devices } from '@playwright/test'
 
 const isCI = !!process.env['CI']
 
+// Served like GitHub Pages: under the repository sub-path, no SPA rewrites, 404.html fallback.
+const BASE_PATH = '/E-B-M-DIGITAL/'
 const APP_PORT = 4173
 const COMING_SOON_PORT = 4174
+const APP_URL = `http://localhost:${APP_PORT}${BASE_PATH}`
+const COMING_SOON_URL = `http://localhost:${COMING_SOON_PORT}${BASE_PATH}`
 
 // Pass the full environment explicitly so each web server gets its own overrides on top.
 const inheritedEnv = Object.fromEntries(
   Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
 )
 
+const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }
+const tablet = {
+  ...devices['Desktop Chrome'],
+  viewport: { width: 820, height: 1180 },
+  deviceScaleFactor: 2,
+  hasTouch: true,
+  isMobile: true,
+}
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  ...(isCI ? { workers: 1 } : {}),
-  reporter: isCI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  ...(isCI ? { workers: 2 } : {}),
+  reporter: isCI
+    ? [['github'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/e2e.json' }]]
+    : [['list'], ['html', { open: 'never' }], ['json', { outputFile: 'test-results/e2e.json' }]],
+  expect: { timeout: 10_000 },
   use: {
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // Service workers stay out of the way except in dedicated PWA specs.
+    serviceWorkers: 'block',
+    locale: 'tr-TR',
+    timezoneId: 'Europe/Istanbul',
   },
   projects: [
     {
-      name: 'chromium',
-      testIgnore: /coming-soon/,
-      use: { ...devices['Desktop Chrome'], baseURL: `http://localhost:${APP_PORT}` },
+      name: 'kids-mobile',
+      testDir: './e2e/kids',
+      use: { ...devices['Pixel 7'], baseURL: APP_URL },
     },
+    { name: 'kids-tablet', testDir: './e2e/kids', use: { ...tablet, baseURL: APP_URL } },
     {
-      name: 'mobile',
-      testIgnore: /coming-soon/,
-      use: { ...devices['Pixel 7'], baseURL: `http://localhost:${APP_PORT}` },
+      name: 'kids-desktop',
+      testDir: './e2e/kids',
+      use: { ...devices['Desktop Chrome'], baseURL: APP_URL },
     },
+    { name: 'studio-desktop', testDir: './e2e/studio', use: { ...desktop, baseURL: APP_URL } },
+    { name: 'journeys', testDir: './e2e/journeys', use: { ...desktop, baseURL: APP_URL } },
+    { name: 'a11y', testDir: './e2e/a11y', use: { ...desktop, baseURL: APP_URL } },
     {
       name: 'coming-soon',
-      testMatch: /coming-soon\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], baseURL: `http://localhost:${COMING_SOON_PORT}` },
+      testDir: './e2e/coming-soon',
+      use: { ...devices['Desktop Chrome'], baseURL: COMING_SOON_URL },
     },
     {
       name: 'coming-soon-mobile',
-      testMatch: /coming-soon\.spec\.ts/,
-      use: { ...devices['Pixel 7'], baseURL: `http://localhost:${COMING_SOON_PORT}` },
+      testDir: './e2e/coming-soon',
+      use: { ...devices['Pixel 7'], baseURL: COMING_SOON_URL },
     },
   ],
   webServer: [
     {
-      command: 'npm run build && npm run preview',
-      port: APP_PORT,
+      // E2E build: mock backend with test hooks (window.__KASIF_E2E__), same CSP as production.
+      command:
+        'node scripts/build-pages.mjs --mode e2e --outDir dist-e2e && node scripts/pages-server.mjs dist-e2e',
+      url: APP_URL,
+      env: { ...inheritedEnv, BASE_PATH, PORT: String(APP_PORT), VITE_COMING_SOON: 'false' },
       reuseExistingServer: !isCI,
-      timeout: 180_000,
+      timeout: 300_000,
     },
     {
-      // Same code, built the way the public site is: coming-soon mode on.
-      command: `npx vite build --outDir dist-coming-soon && npx vite preview --outDir dist-coming-soon --port ${COMING_SOON_PORT} --strictPort`,
-      port: COMING_SOON_PORT,
-      env: { ...inheritedEnv, VITE_COMING_SOON: 'true' },
+      // Same code, built the way the public site is today: coming-soon mode on.
+      command:
+        'node scripts/build-pages.mjs --outDir dist-coming-soon && node scripts/pages-server.mjs dist-coming-soon',
+      url: COMING_SOON_URL,
+      env: { ...inheritedEnv, BASE_PATH, PORT: String(COMING_SOON_PORT), VITE_COMING_SOON: 'true' },
       reuseExistingServer: !isCI,
-      timeout: 180_000,
+      timeout: 300_000,
     },
   ],
 })

@@ -1,0 +1,127 @@
+import { z } from 'zod'
+
+export const AVATARS = ['indigo', 'teal', 'sun', 'coral', 'leaf', 'berry'] as const
+export const avatarSchema = z.enum(AVATARS)
+export type Avatar = z.infer<typeof avatarSchema>
+
+export const AVATAR_LABELS: Record<Avatar, string> = {
+  indigo: 'Gece mavisi Kâşif',
+  teal: 'Turkuaz Kâşif',
+  sun: 'Güneş sarısı Kâşif',
+  coral: 'Mercan Kâşif',
+  leaf: 'Yaprak yeşili Kâşif',
+  berry: 'Böğürtlen moru Kâşif',
+}
+
+export const explorerSettingsSchema = z.object({
+  sound: z.boolean(),
+  reduceMotion: z.boolean(),
+  textSize: z.enum(['normal', 'large']),
+})
+export type ExplorerSettings = z.infer<typeof explorerSettingsSchema>
+
+export const DEFAULT_EXPLORER_SETTINGS: ExplorerSettings = {
+  sound: true,
+  reduceMotion: false,
+  textSize: 'normal',
+}
+
+/** Kâşif membership (ADR 0009). Nickname + avatar only — no real names, no contact data. */
+export const explorerSchema = z.object({
+  id: z.uuid(),
+  nickname: z.string().min(2).max(20),
+  avatar: avatarSchema,
+  /** Short public tag shown to staff: "Ayşe #A7F2". Not a secret. */
+  displayCode: z.string().regex(/^[0-9A-Z]{4}$/),
+  settings: explorerSettingsSchema,
+  createdVia: z.enum(['self', 'center']),
+  createdAt: z.iso.datetime({ offset: true }),
+  lastSeenAt: z.iso.datetime({ offset: true }),
+})
+export type Explorer = z.infer<typeof explorerSchema>
+
+export const explorerProgressSchema = z.object({
+  explorerId: z.uuid(),
+  kitId: z.uuid(),
+  startedAt: z.iso.datetime({ offset: true }),
+  completedAt: z.iso.datetime({ offset: true }).nullable(),
+  completedSteps: z.array(z.string()),
+  qrScans: z.int().nonnegative(),
+  totalDurationMs: z.int().nonnegative(),
+})
+export type ExplorerProgress = z.infer<typeof explorerProgressSchema>
+
+export const earnedBadgeSchema = z.object({
+  explorerId: z.uuid(),
+  badgeId: z.string().max(80),
+  kitId: z.uuid().nullable(),
+  earnedAt: z.iso.datetime({ offset: true }),
+})
+export type EarnedBadge = z.infer<typeof earnedBadgeSchema>
+
+export const GLOBAL_BADGE_IDS = ['first-qr', 'science-explorer', 'quiz-master'] as const
+export type GlobalBadgeId = (typeof GLOBAL_BADGE_IDS)[number]
+
+export const GLOBAL_BADGES: Record<
+  GlobalBadgeId,
+  { name: string; emoji: string; description: string }
+> = {
+  'first-qr': { name: 'İlk QR’ım', emoji: '📷', description: 'İlk QR kodunu okuttun!' },
+  'science-explorer': {
+    name: 'Bilim Kâşifi',
+    emoji: '🔭',
+    description: 'Üç kiti baştan sona tamamladın!',
+  },
+  'quiz-master': { name: 'Quiz Ustası', emoji: '🧠', description: 'Beş soruyu doğru cevapladın!' },
+}
+
+export const SCIENCE_EXPLORER_KITS = 3
+export const QUIZ_MASTER_ANSWERS = 5
+
+export function kitBadgeId(kitId: string) {
+  return `kit:${kitId}`
+}
+
+export function isGlobalBadgeId(id: string): id is GlobalBadgeId {
+  return (GLOBAL_BADGE_IDS as readonly string[]).includes(id)
+}
+
+export type BadgeCounters = {
+  qrScans: number
+  completedKits: number
+  correctQuizAnswers: number
+}
+
+/** Global badges newly earned for the given lifetime counters. */
+export function newlyEarnedGlobalBadges(counters: BadgeCounters, earned: ReadonlySet<string>) {
+  const result: GlobalBadgeId[] = []
+  if (counters.qrScans >= 1 && !earned.has('first-qr')) result.push('first-qr')
+  if (counters.completedKits >= SCIENCE_EXPLORER_KITS && !earned.has('science-explorer')) {
+    result.push('science-explorer')
+  }
+  if (counters.correctQuizAnswers >= QUIZ_MASTER_ANSWERS && !earned.has('quiz-master')) {
+    result.push('quiz-master')
+  }
+  return result
+}
+
+/** The earlier of two ISO timestamps (null = unknown). */
+function earliest(x: string | null, y: string | null) {
+  return x === null ? y : y === null ? x : Date.parse(x) <= Date.parse(y) ? x : y
+}
+
+/**
+ * Merges the device's optimistic progress with the server copy. Completion only ever grows,
+ * so the union of completed cards and the earliest completion time win (offline-safe).
+ */
+export function mergeProgress(a: ExplorerProgress, b: ExplorerProgress): ExplorerProgress {
+  return {
+    explorerId: a.explorerId,
+    kitId: a.kitId,
+    startedAt: earliest(a.startedAt, b.startedAt) ?? a.startedAt,
+    completedAt: earliest(a.completedAt, b.completedAt),
+    completedSteps: [...new Set([...a.completedSteps, ...b.completedSteps])],
+    qrScans: Math.max(a.qrScans, b.qrScans),
+    totalDurationMs: Math.max(a.totalDurationMs, b.totalDurationMs),
+  }
+}

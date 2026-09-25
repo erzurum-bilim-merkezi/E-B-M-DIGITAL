@@ -27,7 +27,7 @@ this system wins over novelty.
 | Cards, panels, popovers          | `bg-surface` + `border border-border`                   |
 | Hover/selected rows, subtle fill | `bg-surface-muted`                                      |
 | Text primary/secondary/tertiary  | `text-fg` / `text-fg-muted` / `text-fg-subtle`          |
-| Dividers / control outlines      | `border-border` / `ring-border-strong`                  |
+| Dividers / control outlines      | `border-border` / `ring-control-border` (≥ 3:1)         |
 | Primary action                   | `bg-primary text-primary-fg hover:bg-primary-hover`     |
 | Links                            | `text-link`                                             |
 | Destructive                      | `bg-danger hover:bg-danger-hover` / `text-danger`       |

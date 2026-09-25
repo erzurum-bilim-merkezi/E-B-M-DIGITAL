@@ -1,0 +1,168 @@
+import { z } from 'zod'
+
+import { stepSchema, type Step } from './blocks.ts'
+import { iconSchema } from './icons.ts'
+import {
+  cardColorSchema,
+  emojiSchema,
+  mediaRefSchema,
+  qrPrefixSchema,
+  richTextSchema,
+  slugSchema,
+} from './primitives.ts'
+
+export const KIT_SCHEMA_VERSION = 1
+
+export const KIT_CATEGORIES = [
+  'plants',
+  'space',
+  'water',
+  'electricity',
+  'robotics',
+  'earth',
+  'body',
+  'other',
+] as const
+export const kitCategorySchema = z.enum(KIT_CATEGORIES)
+export type KitCategory = z.infer<typeof kitCategorySchema>
+
+export const KIT_CATEGORY_LABELS: Record<KitCategory, string> = {
+  plants: 'Bitkiler',
+  space: 'Uzay',
+  water: 'Su',
+  electricity: 'Elektrik',
+  robotics: 'Robotik',
+  earth: 'Yer bilimi',
+  body: 'İnsan vücudu',
+  other: 'Diğer',
+}
+
+export const THEME_PRESETS = ['meadow', 'space', 'ocean', 'sunset', 'candy'] as const
+export const themePresetSchema = z.enum(THEME_PRESETS)
+export type ThemePreset = z.infer<typeof themePresetSchema>
+
+export const THEME_PRESET_LABELS: Record<ThemePreset, string> = {
+  meadow: 'Çayır',
+  space: 'Uzay',
+  ocean: 'Okyanus',
+  sunset: 'Gün batımı',
+  candy: 'Şeker',
+}
+
+export const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, '#RRGGBB biçiminde olmalı')
+
+export const themeSchema = z.object({
+  preset: themePresetSchema,
+  /** Optional accent (buttons, progress). Must keep AA contrast with white text. */
+  accent: hexColorSchema.optional(),
+  font: z.enum(['playful', 'standard']),
+  motion: z.enum(['full', 'calm', 'minimal']),
+})
+export type KitTheme = z.infer<typeof themeSchema>
+
+export const badgeSchema = z.object({
+  name: z.string().max(30),
+  emoji: emojiSchema,
+  color: cardColorSchema,
+  description: z.string().max(120),
+})
+export type KitBadge = z.infer<typeof badgeSchema>
+
+export const materialSchema = z.object({
+  id: z.string().regex(/^[a-z0-9-]{1,40}$/),
+  name: z.string().max(60),
+  quantity: z.string().max(20),
+  emoji: z.string().max(16),
+})
+export type KitMaterial = z.infer<typeof materialSchema>
+
+export const QR_ENTRY_MODES = ['focused', 'full'] as const
+
+const kitDocumentShape = z.object({
+  schemaVersion: z.literal(KIT_SCHEMA_VERSION),
+  id: z.uuid(),
+  slug: slugSchema,
+  /** 0 while a draft; 1…n inside published snapshots. */
+  version: z.int().nonnegative(),
+  title: z.string().max(60),
+  tagline: z.string().max(120),
+  description: richTextSchema,
+  icon: iconSchema,
+  cover: mediaRefSchema.optional(),
+  category: kitCategorySchema,
+  ageRange: z.object({ min: z.int().min(3).max(14), max: z.int().min(3).max(14) }),
+  durationMinutes: z.int().min(1).max(180),
+  theme: themeSchema,
+  learningObjectives: z.array(z.string().max(140)).max(10),
+  materials: z.array(materialSchema).max(30),
+  safetyNotes: z.array(z.string().max(200)).max(10),
+  /** Kit QR code (`KC`); cards get `KC-01`, `KC-02` … Locked after the first publish. */
+  qrPrefix: qrPrefixSchema,
+  /** Last card number handed out. Never decreases, so a deleted card's code is never reused. */
+  qrSequence: z.int().nonnegative(),
+  /** QR entry: `focused` shows only the scanned card (E-B-M behaviour), `full` the whole kit. */
+  qrEntryMode: z.enum(QR_ENTRY_MODES),
+  badge: badgeSchema,
+  steps: z.array(stepSchema).max(30),
+})
+
+/**
+ * Structural invariants that must hold even for drafts: identities and QR codes are what
+ * progress, analytics and printed labels depend on.
+ */
+function checkIdentities(kit: z.infer<typeof kitDocumentShape>, ctx: z.RefinementCtx) {
+  const seen = { id: new Set<string>(), slug: new Set<string>(), qr: new Set<string>() }
+  kit.steps.forEach((step, index) => {
+    if (seen.id.has(step.id)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['steps', index, 'id'],
+        message: 'Kart kimliği tekrar ediyor',
+      })
+    }
+    if (seen.slug.has(step.slug)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['steps', index, 'slug'],
+        message: 'Kart adresi tekrar ediyor',
+      })
+    }
+    if (seen.qr.has(step.qrCode)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['steps', index, 'qrCode'],
+        message: 'QR kodu tekrar ediyor',
+      })
+    }
+    seen.id.add(step.id)
+    seen.slug.add(step.slug)
+    seen.qr.add(step.qrCode)
+
+    const [prefix, number] = step.qrCode.split('-')
+    if (prefix !== kit.qrPrefix) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['steps', index, 'qrCode'],
+        message: 'QR kodu kitin önekiyle başlamalı',
+      })
+    }
+    if (Number(number) > kit.qrSequence) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['qrSequence'],
+        message: 'QR sayacı atanmış kodların gerisinde kalamaz',
+      })
+    }
+  })
+  if (kit.ageRange.min > kit.ageRange.max) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['ageRange'],
+      message: 'En küçük yaş en büyük yaştan büyük olamaz',
+    })
+  }
+}
+
+export const kitDocumentSchema = kitDocumentShape.superRefine(checkIdentities)
+export type KitDocument = z.infer<typeof kitDocumentSchema>
+export type { Step }

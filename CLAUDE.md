@@ -9,27 +9,30 @@ Tailwind CSS 4 · Vitest 5 + Testing Library + MSW · Playwright + axe · oxlint
 
 ## Commands
 
-| Task                                      | Command                                                         |
-| ----------------------------------------- | --------------------------------------------------------------- |
-| Dev server                                | `npm run dev` → http://localhost:5173                           |
-| Full local gate (run before finishing)    | `npm run validate` (typecheck, lint, boundaries, format, tests) |
-| Unit tests: watch / once / coverage       | `npm test` / `npm run test:run` / `npm run test:coverage`       |
-| Single test file                          | `npx vitest run src/path/File.test.tsx`                         |
-| E2E + accessibility (builds, serves 4173) | `npm run test:e2e`                                              |
-| Production build                          | `npm run build`                                                 |
+| Task                                   | Command                                                         |
+| -------------------------------------- | --------------------------------------------------------------- |
+| Dev server                             | `npm run dev` → http://localhost:5173                           |
+| Full local gate (run before finishing) | `npm run validate` (typecheck, lint, boundaries, format, tests) |
+| Unit tests: watch / once / coverage    | `npm test` / `npm run test:run` / `npm run test:coverage`       |
+| Single test file                       | `npx vitest run src/path/File.test.tsx`                         |
+| E2E + accessibility (Pages-like, 4173) | `npm run test:e2e` (`--project=kids-mobile` etc. to narrow)     |
+| Production build                       | `npm run build`                                                 |
 
 ## Architecture — enforced by `npm run lint:boundaries`
 
 ```
 src/
-  app/        composition root: providers, router, layouts, global styles
-  pages/      route components — thin, compose features, no business logic
-  features/   vertical slices: api/ components/ hooks/ index.ts (public API)
-  shared/     domain-agnostic: ui/ api/ config/ lib/ hooks/ types/
-  test/       test setup, MSW handlers, render helpers
+  app/        composition root: providers, router (guards), layouts, mock backend seed, styles
+  pages/      route components — thin, compose features, no business logic (kids/, studio/)
+  features/   vertical slices: api/ (port + mock adapter + queries) components/ index.ts
+  entities/   pure domain modules (kit, explorer, activity, studio): zod + relative .ts only
+  shared/     domain-agnostic: ui/ (ui/kid/) api/ config/ lib/ hooks/
+  test/       test setup, render helpers, mock-backend + app-harness helpers
 ```
 
-- Dependencies point down only: `app → pages → features → shared`.
+- Dependencies point down only: `app → pages → features → entities → shared` (ADR 0006).
+- Data goes through feature **ports** with mock adapters today (ADR 0015); never call storage or
+  mock tables from components.
 - Outside a feature, import it only via `@/features/<name>` (its `index.ts`).
 - Features never import each other's internals. Shared needs move to `shared/`; composition happens in pages.
 - Use the `@/` alias across directories; relative imports only inside the same slice.
@@ -67,7 +70,9 @@ src/
   `buildUrl()`). Unhandled requests fail the test by design.
 - Cover loading, success, empty and error states. No sleeps; use `findBy*`.
 - Coverage threshold is 70% globally; new code ships with tests.
-- New user flows get a Playwright spec in `e2e/`; new routes are added to `e2e/a11y.spec.ts`.
+- New user flows get a Playwright spec in `e2e/kids|studio|journeys/`; new routes are added to
+  `e2e/a11y/pages.spec.ts` (ADR 0014). Use `e2e/support/test.ts` fixtures (`seed`, `staff`); UI
+  sign-in only in `e2e/studio/auth.spec.ts`.
 
 ## Accessibility — WCAG 2.2 AA is a release requirement
 
@@ -78,7 +83,8 @@ associated errors; meaningful `alt`; no color-only meaning; one `h1` per page.
 
 - Never read, print or commit `.env` secrets (reads are denied in `.claude/settings.json`).
 - No `dangerouslySetInnerHTML` without sanitizing; no auth tokens in `localStorage`.
-- CSP lives in `docker/nginx/security-headers.conf` — update `connect-src` when adding API origins.
+- CSP has one source, `src/shared/config/csp.ts` (build writes it as `<meta>`; `npm run csp:nginx`
+  regenerates `docker/nginx/security-headers.conf`). Add API origins there (ADR 0013).
 
 ## Definition of Done
 

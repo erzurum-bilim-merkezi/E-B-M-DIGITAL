@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query'
 
+import { AppError } from './errors'
 import { HttpError } from './http-client'
 
 const MAX_RETRIES = 2
@@ -9,9 +10,11 @@ export function createQueryClient() {
     defaultOptions: {
       queries: {
         staleTime: 60_000,
-        // 4xx responses will not succeed on retry; only retry network/5xx failures.
+        // 4xx responses and permanent app errors will not succeed on retry.
         retry: (failureCount, error) =>
-          !(error instanceof HttpError && error.isClientError) && failureCount < MAX_RETRIES,
+          !(error instanceof HttpError && error.isClientError) &&
+          !(error instanceof AppError && error.isPermanent) &&
+          failureCount < MAX_RETRIES,
       },
       mutations: {
         retry: false,

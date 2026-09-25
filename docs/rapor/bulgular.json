@@ -1,0 +1,278 @@
+[
+  {
+    "severity": "Yüksek",
+    "area": "CI/CD güvenliği",
+    "title": "Bir fork'tan açılan PR, deploy iş akışını tetikleyip kendi kodunu Pages'e yayınlayabiliyordu",
+    "status": "Düzeltildi: yalnızca bu reponun main push'u; Pages yetkisi yalnızca deploy işinde"
+  },
+  {
+    "severity": "Yüksek",
+    "area": "Studio editörü",
+    "title": "Kaydedilemeyen düzenlemeler varken 'Yayınla' sunucudaki eski taslağı yayınlayabiliyordu",
+    "status": "Düzeltildi: kayıtlar sıraya alındı; kayıt başarısızsa yayın/inceleme yapılmaz (testli)"
+  },
+  {
+    "severity": "Yüksek",
+    "area": "Studio editörü",
+    "title": "Yerel yedeği geri yüklemek, başkasının daha yeni kaydını sessizce eziyordu",
+    "status": "Düzeltildi: yedek kendi sürümüyle kaydedilir, çakışma diyaloğu açılır (testli)"
+  },
+  {
+    "severity": "Yüksek",
+    "area": "Erişilebilirlik",
+    "title": "Giriş sayfasındaki parola alanının erişilebilir adı yoktu (etiket sarmalayıcıya bağlıydı)",
+    "status": "Düzeltildi: Field bileşenine render-prop desteği; tüm kullanım yerleri tarandı"
+  },
+  {
+    "severity": "Yüksek",
+    "area": "Kâşif",
+    "title": "Katılımdan hemen sonra yönlendirme yüzünden Kâşif kodu hiç gösterilmiyordu",
+    "status": "Düzeltildi (E2E ile doğrulandı)"
+  },
+  {
+    "severity": "Yüksek",
+    "area": "Erişilebilirlik (2.4.3)",
+    "title": "Diyaloglar, yan paneller ve komut paleti kapanınca odak açan düğmeye dönmüyordu",
+    "status": "Düzeltildi: ortak odak dönüşü (menüden açılan diyalog → menü düğmesi, zincirleme diyaloglar, ⌘K); birim testli"
+  },
+  {
+    "severity": "Yüksek",
+    "area": "Erişilebilirlik (2.4.3)",
+    "title": "Kâşif kart kontrolleri (quiz, sıralama, eşleştirme, deney, video) ve karşılama adımları kullanımdan sonra odağı kaybediyordu",
+    "status": "Düzeltildi: odak geri bildirime / sonraki adıma taşınıyor, basılan düğme aria-disabled; birim testli"
+  },
+  {
+    "severity": "Yüksek",
+    "area": "Erişilebilirlik (2.2.1)",
+    "title": "Studio’da kart silme yalnızca 4,5 sn’lik bir bildirimle geri alınabiliyordu",
+    "status": "Düzeltildi: liste üstünde kapatılana dek duran “Geri al” bildirimi; odak komşu karta taşınıyor"
+  },
+  {
+    "severity": "Orta",
+    "area": "Kimlik doğrulama",
+    "title": "Yalnızca parolayla açılmış yönetici oturumu doğrulayıcıyı değiştirip 2FA'yı atlayabiliyordu; TOTP kodu tekrar kullanılabiliyordu",
+    "status": "Düzeltildi: aal2 zorunlu, 5 hatalı kodda kilit, tekrar oynatma koruması (testli)"
+  },
+  {
+    "severity": "Orta",
+    "area": "Yayın",
+    "title": "Coming-soon kapatılırsa deneme arka ucu ve deneme hesapları canlıya çıkabilirdi",
+    "status": "Düzeltildi: deploy iş akışı mock arka uçla lansmanı reddeder; Docker varsayılanı coming-soon"
+  },
+  {
+    "severity": "Orta",
+    "area": "KVKK / merkez cihazı",
+    "title": "Merkez tabletinde devirde diğer çocukların Kâşif kodları okunabiliyordu",
+    "status": "Düzeltildi: devirde tüm üyeler ve kodlar temizlenir, tablette tek üye"
+  },
+  {
+    "severity": "Orta",
+    "area": "QR",
+    "title": "Silinen ya da adı değişen kitin QR öneki başka bir kite verilebiliyordu (basılı etiket yanlış kiti açardı)",
+    "status": "Düzeltildi: önekler kalıcı olarak ayrılır"
+  },
+  {
+    "severity": "Orta",
+    "area": "Studio editörü",
+    "title": "Editörden uygulama içi bağlantıyla çıkınca son 800 ms'deki düzenlemeler kayboluyordu",
+    "status": "Düzeltildi: çıkışta yedek + arka planda kayıt (testli)"
+  },
+  {
+    "severity": "Orta",
+    "area": "Analitik",
+    "title": "Kart sayfası yeniden yüklenen üye nesnesiyle ikinci kez 'card_open' gönderiyordu",
+    "status": "Düzeltildi"
+  },
+  {
+    "severity": "Orta",
+    "area": "Analitik",
+    "title": "Önizleme cihazı üyeleri pano sayılarına karışıyordu",
+    "status": "Düzeltildi"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik",
+    "title": "Koyu temada birincil ve tehlike düğmelerinde metin kontrastı 4,5:1'in altındaydı (Studio ve Kâşif)",
+    "status": "Düzeltildi: koyu tema token'ları; axe iki temada temiz"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik",
+    "title": "Kart radyo grupları ve emoji/ikon ızgaraları ok tuşlarıyla gezilemiyordu",
+    "status": "Düzeltildi: ortak ok tuşu / tek sekme durağı yardımcısı (testli)"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik",
+    "title": "Medya filtresi içeriksiz sekme olarak kullanılıyordu (geçersiz aria-controls)",
+    "status": "Düzeltildi: radyo tarzı süzgeç"
+  },
+  {
+    "severity": "Orta",
+    "area": "Coming-soon",
+    "title": "Önizleme cihazı bayrağı coming-soon modunda Kâşif'i açmıyordu; okutulan QR kodu gösterilmiyordu",
+    "status": "Düzeltildi (testli)"
+  },
+  {
+    "severity": "Orta",
+    "area": "Barındırma",
+    "title": "Ortak github.io kökeni org sitelerini birbirinden yalıtmaz",
+    "status": "Karar gerekli: Supabase'e geçmeden önce özel alan adı (ADR 0013)"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik (2.4.3 / 4.1.3)",
+    "title": "Sayfa değişimleri ekran okuyucuya duyurulmuyordu",
+    "status": "Düzeltildi: rota değişince odak yeni sayfanın başlığına (ilk yükleme ve filtre değişimleri hariç)"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik (1.4.10)",
+    "title": "320 px genişlikte kart sayfaları ve bazı Studio sayfaları yatay kaydırma gerektiriyordu",
+    "status": "Düzeltildi: 9 Studio sayfası için 320 px E2E denetimi eklendi (Kartlar sekmesindeki ek taşma da bu testle bulunup giderildi)"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik (2.4.11)",
+    "title": "Yapışkan Studio başlığı ve çevrimdışı bandı odaklanan öğeyi örtebiliyordu",
+    "status": "Düzeltildi: scroll-padding ve akış içindeki çevrimdışı bandı"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik (1.4.11)",
+    "title": "Form alanı kenarlıkları ve anahtar (switch) kapalı durumu 3:1 kontrastın altındaydı",
+    "status": "Düzeltildi: control-border token’ları (≥ 3:1, iki temada test ediliyor)"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik (4.1.2)",
+    "title": "Bazı aç/kapat düğmeleri hem etiket değiştirip hem aria-pressed kullanıyordu",
+    "status": "Düzeltildi: değişen eylem etiketi korundu, aria-pressed kaldırıldı"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik (4.1.3)",
+    "title": "Kart sıralama duyuruları İngilizce ve iç kimliklerle yapılıyordu",
+    "status": "Düzeltildi: Türkçe sürükle-bırak ve Alt+↑/↓ duyuruları; taşıma sonrası odak kartta kalıyor"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik (4.1.3)",
+    "title": "Durum mesajı alanları metinle birlikte ekleniyordu (iOS VoiceOver kaçırabilir)",
+    "status": "Düzeltildi: canlı bölgeler baştan boş olarak sayfada, yalnızca metin değişiyor"
+  },
+  {
+    "severity": "Orta",
+    "area": "Erişilebilirlik (2.2.1)",
+    "title": "Merkez cihazında \"Hâlâ orada mısın?\" uyarısı 20 saniyeden kısaydı; kiosk diyaloğu odağı içinde tutmuyordu",
+    "status": "Düzeltildi: 20 sn uyarı, son tarih tabanlı geri sayım, odak diyalogda tutuluyor ve geri dönüyor"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Güvenlik",
+    "title": "E2E test kancaları üretim paketine derleniyordu",
+    "status": "Düzeltildi: derleme zamanı kapısı + deploy'da dist taraması"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Güvenlik",
+    "title": "Bozuk bir QR etiketi uygulama içi okuyucuyu durdurabiliyordu",
+    "status": "Düzeltildi (testli)"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Güvenlik",
+    "title": "Merkez PIN'i ve kurulum kodunda deneme sınırı yoktu; özetler listede dönüyordu",
+    "status": "Düzeltildi"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Güvenlik",
+    "title": "CSV dışa aktarımında formül enjeksiyonu koruması yoktu",
+    "status": "Düzeltildi (testli)"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Güvenlik",
+    "title": "Gizli anahtar adı koruması bazı adları (…_KEY, _PAT, SERVICE_ROLE) kaçırıyordu",
+    "status": "Düzeltildi (testli)"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Güvenlik",
+    "title": "CSP kullanılmayan 'wasm-unsafe-eval' iznini içeriyordu",
+    "status": "Kaldırıldı"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Studio",
+    "title": "Kit adresi alanına tire yazılamıyordu",
+    "status": "Düzeltildi (testli)"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Studio",
+    "title": "Kit kopyası geçersiz adresle kaydedilebiliyordu",
+    "status": "Düzeltildi"
+  },
+  {
+    "severity": "Düşük",
+    "area": "QR",
+    "title": "Yalnızca taslakta silinen kartın hâlâ canlı kodu 'kullanım dışı' gösteriliyordu",
+    "status": "Düzeltildi"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Analitik",
+    "title": "Kaldırılmış kartların okutmaları kit koduna sayılıyordu",
+    "status": "Düzeltildi"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Kâşif",
+    "title": "Kod ile geri yükleme kilidi ilk hatadan sayılıyordu; başarılı girişte sıfırlanmıyordu",
+    "status": "Düzeltildi"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Erişilebilirlik",
+    "title": "Sorun sayısı rozetleri düz öğede aria-label kullanıyordu",
+    "status": "Düzeltildi: görünmez metin"
+  },
+  {
+    "severity": "Düşük",
+    "area": "İçerik",
+    "title": "Sıralama kartı varsayılan ikonları (1️⃣2️⃣3️⃣) cevabı ele veriyordu; örnek hikâye kiti engelleyici sorunlarla incelemedeydi",
+    "status": "Düzeltildi"
+  },
+  {
+    "severity": "Düşük",
+    "area": "PWA",
+    "title": "Yeni yayın sonrası açık sekme silinmiş sayfa parçalarını isteyince hata veriyordu",
+    "status": "Düzeltildi: bir kez otomatik yenileme"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Erişilebilirlik (3.3.1)",
+    "title": "Kullanıcı ekleme ve kit sihirbazında hatalar yalnızca form düzeyinde gösteriliyordu",
+    "status": "Düzeltildi: alan düzeyinde hatalar, odak ilk hatalı alana"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Erişilebilirlik (1.3.5)",
+    "title": "Takma ad alanında otomatik doldurma amacı belirtilmemişti",
+    "status": "Düzeltildi: kişisel cihazda autocomplete=nickname, merkez cihazında kapalı"
+  },
+  {
+    "severity": "Düşük",
+    "area": "Merkez cihazı",
+    "title": "Devir anında çevrimdışı kuyrukta bekleyen olaylar (çok nadir) sunucuya ulaşmayabilir",
+    "status": "Bilinen sınır: kuyruk 300 ms içinde gönderilir; Supabase aşamasında ele alınacak"
+  },
+  {
+    "severity": "Bilgi",
+    "area": "Yerel ortam",
+    "title": "Yerel .env dosyasında VITE_ önekli gizli anahtar adları var (VITE_GEMINI_API_KEY, VITE_GITHUB_TOKEN)",
+    "status": "Sizin yapmanız gereken: kaldırın/yeniden adlandırın; paylaşıldıysa anahtarları yenileyin"
+  }
+]

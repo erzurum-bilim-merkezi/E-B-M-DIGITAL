@@ -1,4 +1,4 @@
-# Bibilimsel Çalışma Kiti Platformu — Premium PWA React/Vite Implementation Plan
+# Bilimsel Çalışma Kiti Platformu — Premium PWA React/Vite Implementation Plan
 
 > **Doküman türü:** Ürün + UX/UI + Teknik Mimari + Uygulama Roadmap\
 > **Hedef:** Çocukların bilimsel çalışma kitlerini interaktif olarak kullanabildiği, yöneticilerin ise yeni kitler oluşturup yayınlayabildiği premium PWA platformu\

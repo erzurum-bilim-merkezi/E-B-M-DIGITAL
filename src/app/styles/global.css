@@ -1,6 +1,8 @@
 @import 'tailwindcss';
-/* Self-hosted (KVKK/GDPR: no third-party font CDN). Weight axis only — ~60 kB incl. Turkish glyphs. */
+/* Self-hosted (KVKK/GDPR: no third-party font CDN). Weight axis only, incl. Turkish glyphs. */
 @import '@fontsource-variable/bricolage-grotesque/wght.css';
+@import '@fontsource-variable/fredoka/wght.css';
+@import './kids.css';
 
 /*
  * Design tokens. Two tiers:
@@ -12,25 +14,32 @@
 @theme {
   --font-sans: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-display: 'Bricolage Grotesque Variable', system-ui, 'Segoe UI', sans-serif;
+  --font-kid: 'Fredoka Variable', ui-rounded, 'Segoe UI', system-ui, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
 
-  --color-brand-50: oklch(0.97 0.02 255);
-  --color-brand-100: oklch(0.93 0.04 255);
-  --color-brand-200: oklch(0.87 0.08 255);
-  --color-brand-300: oklch(0.78 0.12 255);
-  --color-brand-400: oklch(0.68 0.16 255);
-  --color-brand-500: oklch(0.6 0.19 255);
-  --color-brand-600: oklch(0.52 0.2 258);
-  --color-brand-700: oklch(0.45 0.18 260);
-  --color-brand-800: oklch(0.38 0.14 262);
-  --color-brand-900: oklch(0.32 0.1 264);
-  --color-brand-950: oklch(0.22 0.07 266);
+  /* Kâşif indigo (logo #3B3486 / #6C63FF). */
+  --color-brand-50: oklch(0.97 0.018 283);
+  --color-brand-100: oklch(0.94 0.035 283);
+  --color-brand-200: oklch(0.88 0.07 283);
+  --color-brand-300: oklch(0.79 0.12 283);
+  --color-brand-400: oklch(0.69 0.17 282);
+  --color-brand-500: oklch(0.6 0.2 281);
+  --color-brand-600: oklch(0.52 0.21 280);
+  --color-brand-700: oklch(0.45 0.19 280);
+  --color-brand-800: oklch(0.38 0.15 281);
+  --color-brand-900: oklch(0.31 0.11 282);
+  --color-brand-950: oklch(0.22 0.08 283);
 
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+  --ease-spring: cubic-bezier(0.2, 1.4, 0.4, 1);
 
   --animate-twinkle: twinkle 5s ease-in-out infinite;
   --animate-draw: draw 1.4s var(--ease-in-out-quart) both;
+  --animate-fade-in: fade-in 180ms var(--ease-out-quart) both;
+  --animate-scale-in: scale-in 200ms var(--ease-out-quart) both;
+  --animate-slide-in-right: slide-in-right 260ms var(--ease-out-quart) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
 
   @keyframes twinkle {
     0%,
@@ -48,6 +57,44 @@
     }
     to {
       stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97) translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
     }
   }
 }
@@ -73,73 +120,186 @@
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-surface-raised: var(--surface-raised);
   --color-fg: var(--fg);
   --color-fg-muted: var(--fg-muted);
   --color-fg-subtle: var(--fg-subtle);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-control-border: var(--control-border);
   --color-ring: var(--ring);
   --color-link: var(--link);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-fg: var(--primary-fg);
+  --color-primary-subtle: var(--primary-subtle);
+  --color-primary-subtle-fg: var(--primary-subtle-fg);
   --color-danger: var(--danger);
   --color-danger-hover: var(--danger-hover);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-contrast: var(--danger-contrast);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-success-fg: var(--success-fg);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-fg: var(--warning-fg);
+  --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
+  --color-info-fg: var(--info-fg);
+  --color-overlay: var(--overlay);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-grid: var(--chart-grid);
 }
 
 @layer base {
   :root,
   [data-theme='light'] {
     color-scheme: light;
-    --canvas: var(--color-white);
+    --canvas: oklch(0.985 0.003 280);
     --surface: var(--color-white);
-    --surface-muted: var(--color-slate-50);
-    --fg: var(--color-slate-900);
-    --fg-muted: var(--color-slate-600);
-    --fg-subtle: var(--color-slate-500);
-    --border: var(--color-slate-200);
-    --border-strong: var(--color-slate-300);
+    --surface-muted: oklch(0.967 0.005 280);
+    --surface-raised: var(--color-white);
+    --fg: oklch(0.21 0.02 280);
+    --fg-muted: oklch(0.44 0.02 280);
+    --fg-subtle: oklch(0.52 0.02 280);
+    --border: oklch(0.915 0.008 280);
+    --border-strong: oklch(0.83 0.012 280);
+    /* Outline of inputs, selects, checkboxes, radios, switch tracks: ≥ 3:1 on every surface (WCAG 1.4.11). */
+    --control-border: oklch(0.62 0.02 280);
     --ring: var(--color-brand-600);
     --link: var(--color-brand-600);
     --primary: var(--color-brand-600);
     --primary-hover: var(--color-brand-700);
     --primary-fg: var(--color-white);
+    --primary-subtle: var(--color-brand-50);
+    --primary-subtle-fg: var(--color-brand-700);
     --danger: var(--color-red-600);
     --danger-hover: var(--color-red-700);
+    --danger-subtle: var(--color-red-50);
+    --danger-fg: var(--color-red-700);
+    /* Text on a filled danger surface. */
+    --danger-contrast: var(--color-white);
+    --success: var(--color-emerald-600);
+    --success-subtle: var(--color-emerald-50);
+    --success-fg: var(--color-emerald-800);
+    --warning: var(--color-amber-500);
+    --warning-subtle: var(--color-amber-50);
+    --warning-fg: var(--color-amber-800);
+    --info: var(--color-sky-600);
+    --info-subtle: var(--color-sky-50);
+    --info-fg: var(--color-sky-800);
+    --overlay: oklch(0.2 0.03 280 / 0.45);
+    --chart-1: oklch(0.55 0.2 280);
+    --chart-2: oklch(0.62 0.14 185);
+    --chart-3: oklch(0.7 0.16 65);
+    --chart-4: oklch(0.6 0.2 350);
+    --chart-5: oklch(0.6 0.15 145);
+    --chart-6: oklch(0.55 0.15 240);
+    --chart-grid: oklch(0.92 0.006 280);
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) {
       color-scheme: dark;
-      --canvas: var(--color-slate-950);
-      --surface: var(--color-slate-900);
-      --surface-muted: var(--color-slate-800);
-      --fg: var(--color-slate-50);
-      --fg-muted: var(--color-slate-300);
-      --fg-subtle: var(--color-slate-400);
-      --border: var(--color-slate-800);
-      --border-strong: var(--color-slate-600);
+      --canvas: oklch(0.155 0.012 280);
+      --surface: oklch(0.195 0.014 280);
+      --surface-muted: oklch(0.235 0.015 280);
+      --surface-raised: oklch(0.235 0.016 280);
+      --fg: oklch(0.96 0.006 280);
+      --fg-muted: oklch(0.8 0.012 280);
+      --fg-subtle: oklch(0.7 0.014 280);
+      --border: oklch(0.29 0.016 280);
+      --border-strong: oklch(0.4 0.02 280);
+      --control-border: oklch(0.56 0.02 280);
       --ring: var(--color-brand-400);
       --link: var(--color-brand-300);
+      --primary: var(--color-brand-400);
+      --primary-hover: var(--color-brand-300);
+      --primary-fg: var(--color-brand-950);
+      --primary-subtle: oklch(0.3 0.08 281);
+      --primary-subtle-fg: var(--color-brand-200);
+      --danger: var(--color-red-400);
+      --danger-hover: var(--color-red-300);
+      --danger-subtle: oklch(0.3 0.08 25);
+      --danger-fg: var(--color-red-300);
+      --danger-contrast: var(--color-red-950);
+      --success: var(--color-emerald-500);
+      --success-subtle: oklch(0.3 0.06 160);
+      --success-fg: var(--color-emerald-300);
+      --warning: var(--color-amber-400);
+      --warning-subtle: oklch(0.32 0.06 75);
+      --warning-fg: var(--color-amber-200);
+      --info: var(--color-sky-400);
+      --info-subtle: oklch(0.3 0.06 240);
+      --info-fg: var(--color-sky-200);
+      --overlay: oklch(0.05 0.01 280 / 0.6);
+      --chart-1: oklch(0.64 0.17 282);
+      --chart-2: oklch(0.66 0.12 185);
+      --chart-3: oklch(0.67 0.14 70);
+      --chart-4: oklch(0.64 0.17 350);
+      --chart-5: oklch(0.65 0.14 145);
+      --chart-6: oklch(0.64 0.12 240);
+      --chart-grid: oklch(0.3 0.014 280);
     }
   }
 
   [data-theme='dark'] {
     color-scheme: dark;
-    --canvas: var(--color-slate-950);
-    --surface: var(--color-slate-900);
-    --surface-muted: var(--color-slate-800);
-    --fg: var(--color-slate-50);
-    --fg-muted: var(--color-slate-300);
-    --fg-subtle: var(--color-slate-400);
-    --border: var(--color-slate-800);
-    --border-strong: var(--color-slate-600);
+    --canvas: oklch(0.155 0.012 280);
+    --surface: oklch(0.195 0.014 280);
+    --surface-muted: oklch(0.235 0.015 280);
+    --surface-raised: oklch(0.235 0.016 280);
+    --fg: oklch(0.96 0.006 280);
+    --fg-muted: oklch(0.8 0.012 280);
+    --fg-subtle: oklch(0.7 0.014 280);
+    --border: oklch(0.29 0.016 280);
+    --border-strong: oklch(0.4 0.02 280);
+    --control-border: oklch(0.56 0.02 280);
     --ring: var(--color-brand-400);
     --link: var(--color-brand-300);
+    --primary: var(--color-brand-400);
+    --primary-hover: var(--color-brand-300);
+    --primary-fg: var(--color-brand-950);
+    --primary-subtle: oklch(0.3 0.08 281);
+    --primary-subtle-fg: var(--color-brand-200);
+    --danger: var(--color-red-400);
+    --danger-hover: var(--color-red-300);
+    --danger-subtle: oklch(0.3 0.08 25);
+    --danger-fg: var(--color-red-300);
+    --danger-contrast: var(--color-red-950);
+    --success: var(--color-emerald-500);
+    --success-subtle: oklch(0.3 0.06 160);
+    --success-fg: var(--color-emerald-300);
+    --warning: var(--color-amber-400);
+    --warning-subtle: oklch(0.32 0.06 75);
+    --warning-fg: var(--color-amber-200);
+    --info: var(--color-sky-400);
+    --info-subtle: oklch(0.3 0.06 240);
+    --info-fg: var(--color-sky-200);
+    --overlay: oklch(0.05 0.01 280 / 0.6);
+    --chart-1: oklch(0.64 0.17 282);
+    --chart-2: oklch(0.66 0.12 185);
+    --chart-3: oklch(0.67 0.14 70);
+    --chart-4: oklch(0.64 0.17 350);
+    --chart-5: oklch(0.65 0.14 145);
+    --chart-6: oklch(0.64 0.12 240);
+    --chart-grid: oklch(0.3 0.014 280);
   }
 
   body {
     @apply bg-canvas font-sans text-fg antialiased;
+  }
+
+  /* A page heading focused after a route change (useRouteFocus) is a landmark, not a control. */
+  [data-route-focus]:focus {
+    outline: none;
   }
 
   /* Honour the OS setting: no ambient motion, state changes become instant. */
@@ -154,5 +314,28 @@
       transition-delay: 0s !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+/* Screen-reader-only live regions and helpers used across both apps. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Skeleton shimmer (content loading placeholders). */
+@utility skeleton {
+  background-image: linear-gradient(
+    90deg,
+    var(--surface-muted) 25%,
+    color-mix(in oklch, var(--surface-muted), var(--fg) 6%) 50%,
+    var(--surface-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+@media print {
+  .no-print {
+    display: none !important;
   }
 }

@@ -1,12 +1,22 @@
+import { useState } from 'react'
+
+// Direct import keeps zod and the kit schemas out of the public coming-soon chunk.
+import { normalizeQrCode } from '@/entities/kit/lib/qr'
 import { env } from '@/shared/config/env'
 
 import { NightSkyScene } from './NightSkyScene'
+
+/** A printed Kâşif QR (`/?q=KC-04`) opened before launch — shown so the scan isn't a dead end. */
+function scannedCode() {
+  return normalizeQrCode(new URLSearchParams(window.location.search).get('q') ?? '')
+}
 
 /**
  * Public pre-launch page (VITE_COMING_SOON=true). Always rendered in the dark theme —
  * the night scene is the brand moment — independent of the visitor's OS setting.
  */
 export function ComingSoonPage() {
+  const [code] = useState(scannedCode)
   return (
     <div
       data-theme="dark"
@@ -36,6 +46,13 @@ export function ComingSoonPage() {
             {env.VITE_APP_NAME}'nin dijital platformunu hazırlıyoruz. Bilimi keşfetmenin yeni adresi
             çok yakında burada.
           </p>
+          {code && (
+            <p className="mt-6 max-w-xl rounded-xl border border-fg/15 bg-fg/5 px-4 py-3 text-base text-fg-muted backdrop-blur-sm">
+              Okuttuğunuz kod:{' '}
+              <span className="font-mono font-semibold tracking-wide text-fg">{code}</span>. Kâşif
+              açıldığında bu kod sizi doğrudan etkinliğe götürecek.
+            </p>
+          )}
         </div>
       </main>
 

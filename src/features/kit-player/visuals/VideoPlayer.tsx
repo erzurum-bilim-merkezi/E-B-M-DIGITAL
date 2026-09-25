@@ -3,7 +3,7 @@ import { useRef, useState, type ComponentProps, type SyntheticEvent } from 'reac
 import { youtubeEmbedUrl, type VideoSource } from '@/entities/kit'
 import { useOnlineStatus } from '@/shared/hooks/browser-hooks'
 import { useFocusAfterUpdate } from '@/shared/hooks/focus-hooks'
-import { useResolvedMediaUrl } from '@/shared/hooks/useResolvedMediaUrl'
+import { useCaptionsUrl } from '@/shared/hooks/useCaptionsUrl'
 import { cn } from '@/shared/lib/cn'
 import { KidButton } from '@/shared/ui/kid'
 
@@ -159,7 +159,7 @@ function Mp4Video({
 
 export function VideoPlayer({ source, title, cardColor, onWatched, watched }: VideoPlayerProps) {
   const online = useOnlineStatus()
-  const captionsUrl = useResolvedMediaUrl(source.provider === 'mp4' ? source.captions?.url : null)
+  const captionsUrl = useCaptionsUrl(source.provider === 'mp4' ? source.captions?.url : null)
   if (!online) return <OfflineNotice />
   if (source.provider === 'youtube') {
     return (

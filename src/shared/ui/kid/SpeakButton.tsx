@@ -61,6 +61,8 @@ export function SpeakButton({ text, audioUrl, muted = false, className }: SpeakB
           ref={audioRef}
           src={audioUrl}
           preload="none"
+          // CORS mode: the service worker can cache it for offline play (opaque responses are not).
+          crossOrigin="anonymous"
           onPlay={() => setAudioPlaying(true)}
           onPause={() => setAudioPlaying(false)}
           onEnded={() => setAudioPlaying(false)}

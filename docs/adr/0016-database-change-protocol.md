@@ -1,6 +1,6 @@
 # 0016. Tek ortam veritabanı değişiklik protokolü
 
-- **Durum:** Önerildi (F4)
+- **Durum:** Kabul edildi (2026-09-25; `db-migrate` workflow'u, CI'da `supabase` provası)
 - **Tarih:** 2026-09-24
 
 ## Karar (önerilen)

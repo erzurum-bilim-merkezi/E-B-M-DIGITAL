@@ -7,7 +7,7 @@ import { KidButton, KidPanel, SpeechBubble } from '@/shared/ui/kid'
 
 import { usePlayer } from '../components/usePlayer'
 import { VisualArea } from '../visuals/VisualArea'
-import { useCompleteOnce, type BlockProps } from './types'
+import { iconEmoji, reannounce, useCompleteOnce, type BlockProps } from './types'
 
 export function ChooseCorrectBlock({ step, onComplete }: BlockProps<'choose-correct'>) {
   const { celebrate } = usePlayer()
@@ -32,7 +32,8 @@ export function ChooseCorrectBlock({ step, onComplete }: BlockProps<'choose-corr
     if (!option.correct) {
       // A fresh object per wrong tap restarts the wiggle; the attempt count keeps it unique.
       setWiggle({ id: option.id, key: attempts.current })
-      setMessage(option.feedback || 'Hmm, bu olmaz! Tekrar dene. 😄')
+      const feedback = option.feedback || 'Hmm, bu olmaz! Tekrar dene. 😄'
+      setMessage((previous) => reannounce(previous, feedback))
       return
     }
     const next = new Set(picked).add(option.id)
@@ -41,7 +42,8 @@ export function ChooseCorrectBlock({ step, onComplete }: BlockProps<'choose-corr
       setMessage(step.successMessage || '🎉 Hepsini buldun!')
       if (complete({ attempts: attempts.current })) celebrate(step.celebration || '🎉 Harika!')
     } else {
-      setMessage(option.feedback || '✅ Doğru! Devam et.')
+      const feedback = option.feedback || '✅ Doğru! Devam et.'
+      setMessage((previous) => reannounce(previous, feedback))
     }
   }
 
@@ -54,6 +56,7 @@ export function ChooseCorrectBlock({ step, onComplete }: BlockProps<'choose-corr
             state={solved ? 'success' : 'idle'}
             title={step.title}
             cardColor={step.cardColor}
+            emoji={iconEmoji(step)}
           />
         )}
         <div
@@ -164,6 +167,7 @@ export function QuizBlock({ step, onComplete, onQuizAnswer }: BlockProps<'quiz'>
   const { celebrate } = usePlayer()
   const complete = useCompleteOnce(onComplete)
   const name = useId()
+  const errorId = useId()
   const [choice, setChoice] = useState<string | null>(null)
   const [wrong, setWrong] = useState<ReadonlySet<string>>(new Set())
   const [solved, setSolved] = useState(false)
@@ -175,7 +179,7 @@ export function QuizBlock({ step, onComplete, onQuizAnswer }: BlockProps<'quiz'>
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (!choice || solved) {
-      if (!choice) setError('Önce bir cevap seç.')
+      if (!choice) setError((previous) => reannounce(previous, 'Önce bir cevap seç.'))
       return
     }
     setError(null)
@@ -203,11 +207,16 @@ export function QuizBlock({ step, onComplete, onQuizAnswer }: BlockProps<'quiz'>
             state={solved ? 'success' : 'idle'}
             title={step.title}
             cardColor={step.cardColor}
+            emoji={iconEmoji(step)}
           />
         </KidPanel>
       )}
       <KidPanel className="flex flex-col gap-4">
-        <fieldset className="flex flex-col gap-3" disabled={solved}>
+        <fieldset
+          className="flex flex-col gap-3"
+          disabled={solved}
+          aria-describedby={error ? errorId : undefined}
+        >
           <legend className="mb-3 text-2xl font-bold">{step.question}</legend>
           {step.options.map((option, index) => {
             const isWrong = wrong.has(option.id)
@@ -243,8 +252,18 @@ export function QuizBlock({ step, onComplete, onQuizAnswer }: BlockProps<'quiz'>
                   {String.fromCharCode(65 + index)}
                 </span>
                 <span className="flex-1">{option.label}</span>
-                {isRight && <span aria-label="doğru">✅</span>}
-                {isWrong && <span aria-label="yanlış">❌</span>}
+                {isRight && (
+                  <>
+                    <span aria-hidden="true">✅</span>
+                    <span className="sr-only">(doğru)</span>
+                  </>
+                )}
+                {isWrong && (
+                  <>
+                    <span aria-hidden="true">❌</span>
+                    <span className="sr-only">(yanlış)</span>
+                  </>
+                )}
               </label>
             )
           })}
@@ -255,7 +274,11 @@ export function QuizBlock({ step, onComplete, onQuizAnswer }: BlockProps<'quiz'>
           </KidButton>
         )}
         {error && (
-          <p role="alert" className="text-center text-lg font-semibold text-kid-danger">
+          <p
+            id={errorId}
+            role="alert"
+            className="text-center text-lg font-semibold text-kid-danger"
+          >
             {error}
           </p>
         )}

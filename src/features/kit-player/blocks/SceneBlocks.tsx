@@ -6,11 +6,7 @@ import { RichText } from '@/shared/ui'
 
 import { usePlayer } from '../components/usePlayer'
 import { VisualArea } from '../visuals/VisualArea'
-import { useCompleteOnce, type BlockProps } from './types'
-
-function iconEmoji(step: { icon: { kind: string; value?: string } }) {
-  return step.icon.kind === 'emoji' && step.icon.value ? step.icon.value : undefined
-}
+import { iconEmoji, useCompleteOnce, type BlockProps } from './types'
 
 function MissingVisual() {
   return (

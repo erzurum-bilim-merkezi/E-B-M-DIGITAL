@@ -39,10 +39,10 @@ function comingSoonDocument(enabled: boolean): Plugin {
  * GitHub Pages cannot send headers, so every build carries its CSP as a <meta> right after the
  * charset (before any script or stylesheet). The dev server stays unrestricted (HMR, devtools).
  */
-function contentSecurityPolicy(): Plugin {
+function contentSecurityPolicy(backendOrigin: string | null): Plugin {
   const tags = [
     // Same source and inputs as the nginx header (scripts/generate-nginx-headers.mjs).
-    `<meta http-equiv="Content-Security-Policy" content="${buildCsp({ backendOrigin: process.env['CSP_BACKEND_ORIGIN'] || null })}" />`,
+    `<meta http-equiv="Content-Security-Policy" content="${buildCsp({ backendOrigin })}" />`,
     `<meta name="referrer" content="${REFERRER_POLICY}" />`,
   ]
   return {
@@ -79,7 +79,13 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       comingSoonDocument(appEnv.VITE_COMING_SOON),
-      contentSecurityPolicy(),
+      // The Supabase project is the only backend origin (CSP_BACKEND_ORIGIN overrides it).
+      contentSecurityPolicy(
+        process.env['CSP_BACKEND_ORIGIN'] ||
+          (appEnv.VITE_BACKEND === 'supabase' && appEnv.VITE_SUPABASE_URL
+            ? new URL(appEnv.VITE_SUPABASE_URL).origin
+            : null),
+      ),
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.svg', 'kasifkit-logo-mark.svg'],

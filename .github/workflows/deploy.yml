@@ -41,24 +41,22 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Refuse to launch on the mock backend
-        # The in-browser mock (demo accounts, local data) must never be the public app (ADR 0013).
-        env:
-          VITE_COMING_SOON: ${{ vars.VITE_COMING_SOON || 'true' }}
-        run: |
-          if [ "$VITE_COMING_SOON" != "true" ] && grep -q "= 'mock'" src/shared/config/backend.ts; then
-            echo "::error::Launch needs the live backend (F12). Keep VITE_COMING_SOON=true until then."
-            exit 1
-          fi
       - name: Build
         run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
           VITE_APP_ENV: production
           # Repository variables (Settings → Secrets and variables → Actions → Variables).
-          # Launch day: set VITE_COMING_SOON=false and re-run this workflow.
+          # Launch day: set VITE_COMING_SOON=false and re-run this workflow. The env schema
+          # refuses a launch on the in-browser mock backend (ADR 0013), so VITE_BACKEND=supabase,
+          # VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (public by design) must be set.
           VITE_COMING_SOON: ${{ vars.VITE_COMING_SOON || 'true' }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_BACKEND: ${{ vars.VITE_BACKEND || 'mock' }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          # The CSP allows the Supabase origin (connect/img/media-src).
+          CSP_BACKEND_ORIGIN: ${{ vars.VITE_SUPABASE_URL }}
       - name: Prepare artifact
         run: |
           # Hidden source maps are for error tracking only — never publish them.

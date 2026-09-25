@@ -131,7 +131,7 @@ $$;
 create function private.validate_identity(p_slug text, p_prefix text, p_except uuid default null)
 returns void
 language plpgsql
-stable
+volatile -- raises through private.raise
 security definer
 set search_path = ''
 as $$
@@ -156,7 +156,7 @@ $$;
 create function private.assert_draft(p_draft jsonb, p_id uuid, p_slug text, p_prefix text)
 returns jsonb
 language plpgsql
-stable
+volatile -- raises through private.raise
 set search_path = ''
 as $$
 begin
@@ -332,7 +332,7 @@ create function public.kit_identity_taken(
 )
 returns jsonb
 language plpgsql
-stable
+volatile -- checks the caller through private.require_staff
 security definer
 set search_path = ''
 as $$

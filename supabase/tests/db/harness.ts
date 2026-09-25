@@ -118,8 +118,17 @@ export async function createTestDb() {
   const { query, close } = url ? await openPostgres(url) : await openPglite()
   let savepoint = 0
 
-  /** Runs `text` as `actor` (role + JWT claims), isolated in a savepoint. */
-  async function run(actor: Actor, text: string, params: readonly unknown[] = []) {
+  /**
+   * Runs `text` as `actor` (role + JWT claims), isolated in a savepoint. `storageApi` runs it the
+   * way the Storage API deletes: real Supabase refuses a plain DELETE on storage tables unless
+   * `storage.allow_delete_query` is on, and the policies still decide what goes.
+   */
+  async function run(
+    actor: Actor,
+    text: string,
+    params: readonly unknown[] = [],
+    { storageApi = false } = {},
+  ) {
     const name = `call_${++savepoint}`
     await query(`savepoint ${name}`)
     try {
@@ -127,7 +136,9 @@ export async function createTestDb() {
       await query(`select set_config('request.jwt.claims', $1, true)`, [
         JSON.stringify(claimsOf(actor)),
       ])
+      if (storageApi) await query(`select set_config('storage.allow_delete_query', 'true', true)`)
       const rows = await query(text, params)
+      if (storageApi) await query(`select set_config('storage.allow_delete_query', 'false', true)`)
       await query('reset role')
       await query(`release savepoint ${name}`)
       return rows
@@ -151,6 +162,9 @@ export async function createTestDb() {
       return {
         sql: async <T extends Row = Row>(text: string, params: readonly unknown[] = []) =>
           (await run(actor, text, params)) as T[],
+        /** A statement sent the way the Storage API sends it (see `run`). */
+        storageApi: async <T extends Row = Row>(text: string, params: readonly unknown[] = []) =>
+          (await run(actor, text, params, { storageApi: true })) as T[],
         /** Calls `public.<name>` with named arguments and returns its result. */
         rpc: async <T = unknown>(name: string, args: Record<string, unknown> = {}) => {
           const keys = Object.keys(args)

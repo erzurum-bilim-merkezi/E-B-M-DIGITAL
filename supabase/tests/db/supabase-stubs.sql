@@ -33,7 +33,7 @@ create table auth.users (
 );
 
 create table auth.sessions (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key, -- no default, as in GoTrue
   user_id uuid not null references auth.users (id) on delete cascade,
   created_at timestamptz not null default now()
 );
@@ -86,6 +86,22 @@ create table storage.objects (
 alter table storage.objects enable row level security;
 grant all on storage.objects to anon, authenticated, service_role;
 grant select on storage.buckets to anon, authenticated, service_role;
+
+-- Real Storage refuses a plain DELETE on its tables unless the Storage API turned this on
+-- (storage migration 0055); the policies still decide which rows go.
+create function storage.protect_delete() returns trigger language plpgsql as $$
+begin
+  if coalesce(current_setting('storage.allow_delete_query', true), 'false') <> 'true' then
+    raise exception 'Direct deletion from storage tables is not allowed. Use the Storage API instead.'
+      using errcode = '42501';
+  end if;
+  return null;
+end;
+$$;
+create trigger protect_buckets_delete before delete on storage.buckets
+  for each statement execute function storage.protect_delete();
+create trigger protect_objects_delete before delete on storage.objects
+  for each statement execute function storage.protect_delete();
 
 create function storage.foldername(name text) returns text[] language sql immutable as $$
   select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1]

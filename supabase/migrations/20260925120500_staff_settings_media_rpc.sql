@@ -190,7 +190,7 @@ $$;
 create function public.staff_assert_admin()
 returns boolean
 language plpgsql
-stable
+volatile -- checks the caller through private.require_staff
 security definer
 set search_path = ''
 as $$

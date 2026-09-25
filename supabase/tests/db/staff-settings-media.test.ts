@@ -119,11 +119,15 @@ describe('Studio accounts', () => {
       const editor = await db().createStaff({ role: 'editor' })
       const sessions = () =>
         db().sql('select id from auth.sessions where user_id = $1', [editor.id])
-      await db().sql('insert into auth.sessions (user_id) values ($1)', [editor.id])
+      await db().sql('insert into auth.sessions (id, user_id) values (gen_random_uuid(), $1)', [
+        editor.id,
+      ])
       await db().as(admin).rpc('staff_mark_password_reset', { p_user: editor.id })
       expect(await sessions()).toEqual([])
 
-      await db().sql('insert into auth.sessions (user_id) values ($1)', [editor.id])
+      await db().sql('insert into auth.sessions (id, user_id) values (gen_random_uuid(), $1)', [
+        editor.id,
+      ])
       await db().as(admin).rpc('staff_update', { p_user: editor.id, p_active: false })
       expect(await sessions()).toEqual([])
     })
@@ -389,7 +393,9 @@ describe('storage policies', () => {
       [editor.id],
     )
     const removed = (actor: Actor) =>
-      db().as(actor).sql(`delete from storage.objects where name = 'uploads/o.png' returning name`)
+      db()
+        .as(actor)
+        .storageApi(`delete from storage.objects where name = 'uploads/o.png' returning name`)
     expect(await removed(other)).toEqual([])
     expect(await removed(editor)).toEqual([{ name: 'uploads/o.png' }])
   })
@@ -410,7 +416,9 @@ describe('storage policies', () => {
     })
     const removed = await db()
       .as(editor)
-      .sql('delete from storage.objects where name = $1 returning name', [`uploads/${id}.png`])
+      .storageApi('delete from storage.objects where name = $1 returning name', [
+        `uploads/${id}.png`,
+      ])
     expect(removed).toEqual([])
   })
 
@@ -427,6 +435,17 @@ describe('storage policies', () => {
     expect(bucket?.allowed_mime_types).not.toContain('image/svg+xml')
   })
 
+  it('deletes files only through the Storage API, never with plain SQL', async () => {
+    const admin = await db().createStaff({ role: 'admin' })
+    await db().sql(
+      `insert into storage.objects (bucket_id, name) values ('media', 'uploads/y.png')`,
+    )
+    const error = await dbError(
+      db().as(admin).sql(`delete from storage.objects where name = 'uploads/y.png'`),
+    )
+    expect(error.code).toBe('42501')
+  })
+
   it('lets only admins delete media files', async () => {
     const editor = await db().createStaff({ role: 'editor' })
     const admin = await db().createStaff({ role: 'admin' })
@@ -434,7 +453,9 @@ describe('storage policies', () => {
       `insert into storage.objects (bucket_id, name) values ('media', 'uploads/x.png')`,
     )
     const removed = (actor: Actor) =>
-      db().as(actor).sql(`delete from storage.objects where name = 'uploads/x.png' returning name`)
+      db()
+        .as(actor)
+        .storageApi(`delete from storage.objects where name = 'uploads/x.png' returning name`)
     expect(await removed(editor)).toEqual([])
     expect(await removed(admin)).toEqual([{ name: 'uploads/x.png' }])
   })

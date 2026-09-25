@@ -118,9 +118,9 @@ declare
   v_accepted integer := 0;
   v_duplicates integer := 0;
   v_rejected integer := 0;
-  v_new_badges jsonb := '[]';
+  v_new_badges jsonb := '[]'::jsonb;
   v_badge public.explorer_badges;
-  v_touched jsonb := '{}';
+  v_touched jsonb := '{}'::jsonb;
   v_counters record;
   v_earned text[];
   v_global text;

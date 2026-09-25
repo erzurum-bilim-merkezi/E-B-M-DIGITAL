@@ -713,6 +713,17 @@ async function readData(): Promise<AnalyticsData> {
 const call = <T>(actor: Actor, name: string, args: Record<string, unknown> = {}) =>
   db().as(actor).rpc<T>(name, args)
 
+/**
+ * Every number rounded to 9 decimals. Postgres prints a float8 in JSON with 15 significant digits
+ * on the local Supabase stack and 17 on PGlite, while the mock divides in JavaScript: a rate of
+ * one in three must compare equal either way.
+ */
+function rounded(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value), (_key, item: unknown) =>
+    typeof item === 'number' ? Math.round(item * 1e9) / 1e9 : item,
+  )
+}
+
 const kitStats = (actor: Actor, kitId: string, range: DayRange) =>
   call<KitStats>(actor, 'analytics_kit_stats', { p_kit: kitId, p_from: range.from, p_to: range.to })
 
@@ -762,9 +773,9 @@ describe('analytics_dashboard', () => {
     const data = await readData()
 
     const forAdmin = await call<DashboardStats>(world.admin, 'analytics_dashboard')
-    expect(forAdmin).toEqual(computeDashboard(data, { includeExplorer: true }))
+    expect(rounded(forAdmin)).toEqual(rounded(computeDashboard(data, { includeExplorer: true })))
     const forEditor = await call<DashboardStats>(world.editor, 'analytics_dashboard')
-    expect(forEditor).toEqual(computeDashboard(data, { includeExplorer: false }))
+    expect(rounded(forEditor)).toEqual(rounded(computeDashboard(data, { includeExplorer: false })))
 
     // The dataset exercises every part of the dashboard.
     expect(forAdmin.totals.explorers).toBe(5) // the preview-only member is no member
@@ -783,8 +794,8 @@ describe('analytics_kit_stats', () => {
     const data = await readData()
     for (const kitId of [world.kits.farm, world.kits.space, world.kits.water]) {
       for (const range of ranges()) {
-        expect(await kitStats(world.editor, kitId, range)).toEqual(
-          computeKitStats(data, kitId, range),
+        expect(rounded(await kitStats(world.editor, kitId, range))).toEqual(
+          rounded(computeKitStats(data, kitId, range)),
         )
       }
     }
@@ -837,8 +848,8 @@ describe('analytics_kit_stats', () => {
     expect(before.heatmap.some((hours) => hours[23] === 1)).toBe(true)
 
     const both = await overview(world.editor, { from: dayBefore, to: day })
-    expect(both.daily).toEqual(
-      computeOverview(await readData(), { from: dayBefore, to: day }).daily,
+    expect(rounded(both.daily)).toEqual(
+      rounded(computeOverview(await readData(), { from: dayBefore, to: day }).daily),
     )
   })
 })
@@ -880,7 +891,9 @@ describe('analytics_explorers', () => {
       { ...base, page: 0 },
     ]
     for (const filter of filters) {
-      expect(await explorerPage(world.admin, filter)).toEqual(computeExplorerPage(data, filter))
+      expect(rounded(await explorerPage(world.admin, filter))).toEqual(
+        rounded(computeExplorerPage(data, filter)),
+      )
     }
 
     // Spot checks of the rules behind those pages.
@@ -923,7 +936,7 @@ describe('explorer detail, export and deletion', () => {
       const detail = await call<ExplorerDetail>(world.admin, 'analytics_explorer_detail', {
         p_explorer: id,
       })
-      expect(detail).toEqual(computeExplorerDetail(data, id))
+      expect(rounded(detail)).toEqual(rounded(computeExplorerDetail(data, id)))
     }
 
     const isik = await call<ExplorerDetail>(world.admin, 'analytics_explorer_detail', {
@@ -959,7 +972,7 @@ describe('explorer detail, export and deletion', () => {
         'analytics_export_explorer',
         { p_explorer: id },
       )
-      expect(exported).toEqual(computeExplorerExport(data, id))
+      expect(rounded(exported)).toEqual(rounded(computeExplorerExport(data, id)))
       expect(JSON.stringify(exported)).not.toMatch(/restore|hash/i)
     }
 
@@ -1004,8 +1017,8 @@ describe('explorer detail, export and deletion', () => {
     expect(audit).toEqual([{ actor_id: world.admin.id, entity: 'explorer', entity_id: ayse }])
 
     // The numbers follow at once.
-    expect(await call(world.admin, 'analytics_dashboard')).toEqual(
-      computeDashboard(await readData(), { includeExplorer: true }),
+    expect(rounded(await call(world.admin, 'analytics_dashboard'))).toEqual(
+      rounded(computeDashboard(await readData(), { includeExplorer: true })),
     )
     const again = dbError(call(world.admin, 'analytics_delete_explorer', { p_explorer: ayse }))
     expect(await again).toMatchObject({ code: KS.not_found, message: 'Kâşif bulunamadı.' })
@@ -1016,7 +1029,9 @@ describe('analytics_overview and analytics_csv_rows', () => {
   it('returns the centre overview the mock computes for every range', async () => {
     const data = await readData()
     for (const range of ranges()) {
-      expect(await overview(world.editor, range)).toEqual(computeOverview(data, range))
+      expect(rounded(await overview(world.editor, range))).toEqual(
+        rounded(computeOverview(data, range)),
+      )
     }
     const { week, retention, beyondRetention, long } = namedRanges()
     const stats = await overview(world.editor, week)
@@ -1033,7 +1048,7 @@ describe('analytics_overview and analytics_csv_rows', () => {
     const data = await readData()
     for (const range of ranges()) {
       const items = await csvRows(world.admin, range)
-      expect(items).toEqual(computeCsvItems(data, range))
+      expect(rounded(items)).toEqual(rounded(computeCsvItems(data, range)))
       expect(analyticsCsv(items)).toBe(analyticsCsv(computeCsvItems(data, range)))
     }
 

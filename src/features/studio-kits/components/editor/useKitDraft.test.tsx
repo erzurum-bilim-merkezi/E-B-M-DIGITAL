@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
-import { KUCUK_CIFTCILER, type StudioKit } from '@/entities/kit'
+import { kitDocumentSchema, KUCUK_CIFTCILER, MAX_KIT_STEPS, type StudioKit } from '@/entities/kit'
 import { mockControl } from '@/shared/api/mock-db'
 import { seedMockBackend, signInAs } from '@/test/mock-backend'
 import { act, createTestQueryClient, renderHook, waitFor } from '@/test/test-utils'
@@ -254,6 +254,64 @@ describe('useKitDraft', () => {
       expect(result.current.draft.steps.map((step) => step.id)).toEqual(
         KUCUK_CIFTCILER.steps.map((step) => step.id),
       )
+    })
+
+    it('gives a restored card a free address when a new card took its old one', async () => {
+      const kit = await createKit()
+      const { result } = renderDraft(kit)
+
+      let quiz: ReturnType<typeof result.current.addStep> | undefined
+      act(() => {
+        quiz = result.current.addStep('quiz')
+      })
+      let removed: ReturnType<typeof result.current.removeStep> = null
+      act(() => {
+        removed = quiz ? result.current.removeStep(quiz.id) : null
+      })
+      let replacement: ReturnType<typeof result.current.addStep> | undefined
+      act(() => {
+        replacement = result.current.addStep('quiz')
+      })
+      expect(replacement?.slug).toBe('soru-zamani')
+
+      let restored = false
+      act(() => {
+        if (removed) restored = result.current.restoreStep(removed.step, removed.index)
+      })
+
+      expect(restored).toBe(true)
+      const slugs = result.current.draft.steps.map((step) => step.slug)
+      expect(slugs.filter((slug) => slug.startsWith('soru-zamani')).toSorted()).toEqual([
+        'soru-zamani',
+        'soru-zamani-2',
+      ])
+      // The draft stays saveable: autosave no longer fails on a duplicate address.
+      expect(kitDocumentSchema.safeParse(result.current.draft).success).toBe(true)
+    })
+
+    it('does not restore a card into a full kit', async () => {
+      const kit = await createKit()
+      const { result } = renderDraft(kit)
+
+      let removed: ReturnType<typeof result.current.removeStep> = null
+      act(() => {
+        removed = result.current.removeStep(MARUL!.id)
+      })
+      act(() => {
+        // `result.current` only updates after act(): count the free places up front.
+        const free = MAX_KIT_STEPS - (KUCUK_CIFTCILER.steps.length - 1)
+        for (let added = 0; added < free; added++) result.current.addStep('info')
+      })
+      const full = result.current.draft
+
+      let restored = true
+      act(() => {
+        if (removed) restored = result.current.restoreStep(removed.step, removed.index)
+      })
+
+      expect(restored).toBe(false)
+      expect(result.current.draft).toBe(full)
+      expect(result.current.draft.steps).toHaveLength(MAX_KIT_STEPS)
     })
 
     it('updates one card', async () => {

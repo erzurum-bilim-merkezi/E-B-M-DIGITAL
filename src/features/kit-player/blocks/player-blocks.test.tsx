@@ -29,6 +29,29 @@ function play(step: Step) {
   return { onComplete, onQuizAnswer, celebrate, user: userEvent.setup() }
 }
 
+/** A matched card's name: its own text first (E2E relies on it), then its partner. */
+function named(own: string, partner: string) {
+  // jsdom drops the space that browsers put between the text and the sr-only note.
+  return new RegExp(`^${own}\\s*\\(eşleşti: ${partner}\\)$`)
+}
+
+/** The player around one card, for render and rerender (Studio live preview edits). */
+function tree(step: Step) {
+  return (
+    <PlayerProvider
+      value={{
+        reducedMotion: true,
+        motion: 'full',
+        muted: true,
+        celebrate: vi.fn<(message?: string) => void>(),
+        mode: 'kids',
+      }}
+    >
+      <StepRenderer step={step} onComplete={vi.fn<(meta: { attempts: number }) => void>()} />
+    </PlayerProvider>
+  )
+}
+
 const list = () => within(screen.getByRole('list', { name: 'Sıralanacak kartlar' }))
 const labels = () =>
   list()
@@ -298,5 +321,157 @@ describe('feedback live regions exist before they speak (WCAG 4.1.3)', () => {
 
     await user.click(button)
     expect(status).toBeEmptyDOMElement()
+  })
+})
+
+describe('emoji stage on question cards', () => {
+  const emojiStage = { kind: 'scene', sceneId: 'emoji-stage' } as const
+  const globe = { kind: 'emoji', value: '🌍' } as const
+
+  it.each([
+    ['quiz', { ...card('quiz'), visual: emojiStage, icon: globe }],
+    ['choose-correct', { ...card('choose-correct'), visual: emojiStage, icon: globe }],
+  ] as const)('%s: shows the card icon, not the ✨ fallback', async (_type, step) => {
+    play(step)
+
+    const scene = await screen.findByRole('img', { name: step.title }, { timeout: 5000 })
+    expect(within(scene).getByText('🌍')).toBeInTheDocument()
+    expect(within(scene).queryByText('✨')).not.toBeInTheDocument()
+  })
+})
+
+describe('repeated feedback is read out again (WCAG 4.1.3)', () => {
+  it('choose-correct: the same wrong tap changes the live text', async () => {
+    const { user } = play(card('choose-correct'))
+    const status = screen.getByRole('status')
+    const wrong = screen.getByRole('button', { name: /Müzik/ })
+
+    await user.click(wrong)
+    const first = status.textContent
+    await user.click(wrong)
+
+    expect(status).toHaveTextContent('Tohum müzik dinlemez!')
+    expect(status.textContent).not.toBe(first)
+  })
+
+  it('matching: a second wrong pair changes the live text', async () => {
+    const { user } = play(card('matching'))
+    const status = screen.getByRole('status')
+    const left = within(screen.getByRole('list', { name: 'Sol kartlar' }))
+    const right = within(screen.getByRole('list', { name: 'Sağ kartlar' }))
+
+    await user.click(left.getByRole('button', { name: 'Kök' }))
+    await user.click(right.getByRole('button', { name: 'Besin üretir' }))
+    const first = status.textContent
+    await user.click(right.getByRole('button', { name: 'Besin üretir' }))
+
+    expect(first).toContain('Bu ikisi eş değil.')
+    expect(status).toHaveTextContent('Bu ikisi eş değil. Tekrar dene! 😊')
+    expect(status.textContent).not.toBe(first)
+  })
+
+  it('quiz: the "no answer" error is re-announced and describes the question group', async () => {
+    const step = card('quiz')
+    const { user } = play(step)
+    const group = screen.getByRole('group', { name: step.question })
+    expect(group).not.toHaveAttribute('aria-describedby')
+
+    const check = () => user.click(screen.getByRole('button', { name: 'Cevabımı kontrol et' }))
+    await check()
+    const alert = screen.getByRole('alert')
+    const first = alert.textContent
+    expect(group).toHaveAccessibleDescription('Önce bir cevap seç.')
+
+    await check()
+    expect(alert.textContent).not.toBe(first)
+    expect(group).toHaveAccessibleDescription('Önce bir cevap seç.')
+
+    await user.click(screen.getByRole('radio', { name: /Yapraklarında/ }))
+    await check()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(group).not.toHaveAttribute('aria-describedby')
+  })
+})
+
+describe('status is not told by color or icon alone (WCAG 1.4.1, 1.1.1)', () => {
+  it('quiz: wrong and right answers carry text next to ❌ / ✅', async () => {
+    const { user } = play(card('quiz'))
+
+    await user.click(screen.getByRole('radio', { name: /Köklerinde/ }))
+    await user.click(screen.getByRole('button', { name: 'Cevabımı kontrol et' }))
+    expect(screen.getByRole('radio', { name: /^Köklerinde\s*\(yanlış\)$/ })).toBeDisabled()
+
+    await user.click(screen.getByRole('radio', { name: /Yapraklarında/ }))
+    await user.click(screen.getByRole('button', { name: 'Cevabımı kontrol et' }))
+    expect(screen.getByRole('radio', { name: /^Yapraklarında\s*\(doğru\)$/ })).toBeChecked()
+  })
+
+  it('sequence: each card says whether it is in place after a check', async () => {
+    const step = card('sequence')
+    const { user } = play(step)
+
+    await user.click(screen.getByRole('button', { name: 'Sıramı kontrol et' }))
+
+    const cards = list()
+      .getAllByRole('button', { pressed: false })
+      .map((button) => button.textContent ?? '')
+    expect(cards).toHaveLength(step.items.length)
+    for (const text of cards) expect(text).toMatch(/\((doğru|yanlış) yerde\)$/)
+  })
+
+  it('matching: both cards of a pair show the same number and name their partner', async () => {
+    const step = card('matching')
+    const { user } = play(step)
+    const left = within(screen.getByRole('list', { name: 'Sol kartlar' }))
+    const right = within(screen.getByRole('list', { name: 'Sağ kartlar' }))
+    const [first, second] = step.pairs
+    if (!first || !second) throw new Error('need two pairs')
+
+    for (const pair of [first, second]) {
+      await user.click(left.getByRole('button', { name: pair.left }))
+      await user.click(right.getByRole('button', { name: pair.right }))
+    }
+
+    const pairOne = [
+      left.getByRole('button', { name: named(first.left, first.right) }),
+      right.getByRole('button', { name: named(first.right, first.left) }),
+    ]
+    const pairTwo = [
+      left.getByRole('button', { name: named(second.left, second.right) }),
+      right.getByRole('button', { name: named(second.right, second.left) }),
+    ]
+    for (const button of pairOne) expect(within(button).getByText('1')).toBeInTheDocument()
+    for (const button of pairTwo) expect(within(button).getByText('2')).toBeInTheDocument()
+  })
+})
+
+describe('Studio live preview edits', () => {
+  it('sequence: shows items added and drops items removed in the editor', () => {
+    const step = card('sequence')
+    const { rerender } = render(tree(step))
+    expect(list().getAllByRole('listitem')).toHaveLength(step.items.length)
+
+    const added = { ...step, items: [...step.items, { id: 'x-5', label: 'Salata', icon: '🥗' }] }
+    rerender(tree(added))
+    expect(list().getAllByRole('listitem')).toHaveLength(step.items.length + 1)
+    expect(labels().some((text) => text.includes('Salata'))).toBe(true)
+
+    const [dropped] = step.items
+    rerender(tree({ ...step, items: step.items.slice(1) }))
+    expect(list().getAllByRole('listitem')).toHaveLength(step.items.length - 1)
+    expect(labels().some((text) => text.includes(dropped?.label ?? '?'))).toBe(false)
+  })
+
+  it('experiment: repeated and blank materials and safety notes all render', () => {
+    play({
+      ...card('experiment'),
+      materials: ['Su', 'Su', ''],
+      safety: ['Dikkat et.', 'Dikkat et.'],
+    })
+
+    const [materials] = screen.getAllByRole('list')
+    if (!materials) throw new Error('no materials list')
+    expect(within(materials).getAllByRole('listitem')).toHaveLength(3)
+    expect(screen.getAllByText('Dikkat et.')).toHaveLength(2)
   })
 })

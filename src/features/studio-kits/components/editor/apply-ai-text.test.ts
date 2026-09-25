@@ -54,36 +54,13 @@ describe('applyAiText', () => {
     expect(fields).toEqual(TEXT_FIELDS)
   })
 
-  it('turns options into playful choices, the first ones correct', () => {
+  it('turns options into shuffled choices that look alike (nothing gives the answer away)', () => {
     const { step, fields } = applied('choose-correct')
 
     expect(step.options).toHaveLength(6)
-    expect(step.options.map((option) => [option.label, option.correct, option.icon])).toEqual([
-      ['Yaprak', true, '✅'],
-      ['Kök', true, '✅'],
-      ['Çiçek', false, '🎩'],
-      ['Gövde', false, '🎩'],
-      ['Tohum', false, '🎩'],
-      ['Meyve', false, '🎩'],
-    ])
-    expect(step.options[0]).toMatchObject({ color: 'green', feedback: '' })
-    expect(step.options[2]?.color).toBe('purple')
-    expect(fields).toEqual([...TEXT_FIELDS, 'options'])
-  })
-
-  it('makes a quiz with the first option as the answer', () => {
-    const { step, fields } = applied('quiz')
-
-    expect(step.question).toBe('Bitki nerede beslenir?')
-    expect(step.options.map((option) => option.label)).toEqual(['Yaprak', 'Kök', 'Çiçek', 'Gövde'])
-    expect(step.correctOptionId).toBe(step.options[0]?.id)
-    expect(fields).toContain('options')
-  })
-
-  it('orders up to six sequence steps', () => {
-    const { step } = applied('sequence')
-
-    expect(step.items.map((item) => item.label)).toEqual([
+    const correct = step.options.filter((option) => option.correct).map((option) => option.label)
+    expect(correct.toSorted()).toEqual(['Kök', 'Yaprak'])
+    expect(step.options.map((option) => option.label)).not.toEqual([
       'Yaprak',
       'Kök',
       'Çiçek',
@@ -91,6 +68,58 @@ describe('applyAiText', () => {
       'Tohum',
       'Meyve',
     ])
+    expect(new Set(step.options.map((option) => `${option.icon}|${option.color}`)).size).toBe(1)
+    expect(step.options.every((option) => option.feedback === '')).toBe(true)
+    expect(fields).toEqual([...TEXT_FIELDS, 'options'])
+    // Stable per card: applying the same draft again gives the same order.
+    expect(applied('choose-correct').step.options.map((option) => option.label)).toEqual(
+      step.options.map((option) => option.label),
+    )
+  })
+
+  it('makes a quiz whose answer (the first AI option) is shuffled among the choices', () => {
+    const { step, fields } = applied('quiz')
+
+    expect(step.question).toBe('Bitki nerede beslenir?')
+    expect(step.options.map((option) => option.label).toSorted()).toEqual(
+      ['Yaprak', 'Kök', 'Çiçek', 'Gövde'].toSorted(),
+    )
+    expect(step.options.map((option) => option.label)).not.toEqual([
+      'Yaprak',
+      'Kök',
+      'Çiçek',
+      'Gövde',
+    ])
+    expect(step.options.find((option) => option.id === step.correctOptionId)?.label).toBe('Yaprak')
+    expect(fields).toContain('options')
+  })
+
+  it('keeps sequence steps in the solved order, up to eight', () => {
+    const { step } = applied('sequence', {
+      options: [
+        'Merkür',
+        'Venüs',
+        'Dünya',
+        'Mars',
+        'Jüpiter',
+        'Satürn',
+        'Uranüs',
+        'Neptün',
+        'Plüton',
+      ],
+    })
+
+    expect(step.items.map((item) => item.label)).toEqual([
+      'Merkür',
+      'Venüs',
+      'Dünya',
+      'Mars',
+      'Jüpiter',
+      'Satürn',
+      'Uranüs',
+      'Neptün',
+    ])
+    // Order-free placeholder icons (6 distinct, then they repeat) never hint at the order.
     expect(new Set(step.items.map((item) => item.icon)).size).toBe(6)
   })
 

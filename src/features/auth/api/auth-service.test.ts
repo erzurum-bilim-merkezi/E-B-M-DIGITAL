@@ -52,6 +52,82 @@ describe('auth service (mock adapter)', () => {
     expect(locked.code).toBe('rate_limited')
   })
 
+  it('answers an unknown e-mail exactly like a wrong password, hash and lockout included', async () => {
+    const deriveBits = vi.spyOn(crypto.subtle, 'deriveBits')
+    const unknown = await failure(authService.signIn('kimse@kasif.dev', 'bir-parola-1'))
+    const wrong = await failure(authService.signIn(DEMO_ACCOUNTS.editor.email, 'bir-parola-1'))
+
+    expect(deriveBits).toHaveBeenCalledTimes(2) // one PBKDF2 run each: no timing difference
+    expect([unknown.code, unknown.message]).toEqual([wrong.code, wrong.message])
+    deriveBits.mockRestore()
+
+    for (let attempt = 1; attempt < 5; attempt++) {
+      // oxlint-disable-next-line no-await-in-loop -- attempts must happen one after another
+      await failure(authService.signIn('KIMSE@kasif.dev', `yanlis-${attempt}-parola`))
+    }
+    for (let attempt = 1; attempt < 5; attempt++) {
+      // oxlint-disable-next-line no-await-in-loop -- attempts must happen one after another
+      await failure(authService.signIn(DEMO_ACCOUNTS.editor.email, `yanlis-${attempt}-parola`))
+    }
+    const unknownLocked = await failure(authService.signIn('kimse@kasif.dev', 'bir-parola-1'))
+    const knownLocked = await failure(
+      authService.signIn(DEMO_ACCOUNTS.editor.email, DEMO_ACCOUNTS.editor.password),
+    )
+    expect(unknownLocked.code).toBe('rate_limited')
+    expect([unknownLocked.code, unknownLocked.message]).toEqual([
+      knownLocked.code,
+      knownLocked.message,
+    ])
+    // The lock is per e-mail: another unknown address is still just "wrong".
+    expect((await failure(authService.signIn('baska@kasif.dev', 'bir-parola-1'))).code).toBe(
+      'unauthorized',
+    )
+  })
+
+  it('changes a password only with the current one outside the temporary-password flow', async () => {
+    await authService.signIn(DEMO_ACCOUNTS.editor.email, DEMO_ACCOUNTS.editor.password)
+    const newPassword = 'Yepyeni.Parola.42'
+
+    const missing = await failure(authService.changePassword({ newPassword }))
+    const wrong = await failure(
+      authService.changePassword({ newPassword, currentPassword: 'yanlis-parola-1' }),
+    )
+    for (const error of [missing, wrong]) {
+      expect(error.code).toBe('validation')
+      expect(error.message).toBe('Mevcut parola hatalı.')
+    }
+
+    const done = await authService.changePassword({
+      newPassword,
+      currentPassword: DEMO_ACCOUNTS.editor.password,
+    })
+    expect(done.next).toBe('done')
+    await authService.signOut()
+    await failure(authService.signIn(DEMO_ACCOUNTS.editor.email, DEMO_ACCOUNTS.editor.password))
+    expect((await authService.signIn(DEMO_ACCOUNTS.editor.email, newPassword)).next).toBe('done')
+  })
+
+  it('locks the current-password check like sign-in, so a session cannot guess it', async () => {
+    await authService.signIn(DEMO_ACCOUNTS.editor.email, DEMO_ACCOUNTS.editor.password)
+    const newPassword = 'Yepyeni.Parola.42'
+    for (let attempt = 0; attempt < 5; attempt++) {
+      // oxlint-disable-next-line no-await-in-loop -- attempts must happen one after another
+      await failure(
+        authService.changePassword({ newPassword, currentPassword: `yanlis-${attempt}-parola` }),
+      )
+    }
+
+    const locked = await failure(
+      authService.changePassword({ newPassword, currentPassword: DEMO_ACCOUNTS.editor.password }),
+    )
+    expect(locked.code).toBe('rate_limited')
+    await authService.signOut()
+    const signIn = await failure(
+      authService.signIn(DEMO_ACCOUNTS.editor.email, DEMO_ACCOUNTS.editor.password),
+    )
+    expect(signIn.code).toBe('rate_limited')
+  })
+
   it('requires TOTP (aal2) for admins', async () => {
     const first = await authService.signIn(DEMO_ACCOUNTS.admin.email, DEMO_ACCOUNTS.admin.password)
     expect(first.next).toBe('mfa-verify')
@@ -90,7 +166,11 @@ describe('auth service (mock adapter)', () => {
 
     expect((await failure(authService.startTotpEnrollment())).code).toBe('forbidden')
     expect((await failure(authService.confirmTotpEnrollment('123456'))).code).toBe('forbidden')
-    expect((await failure(authService.changePassword('Yepyeni.Parola.42'))).code).toBe('forbidden')
+    const change = authService.changePassword({
+      newPassword: 'Yepyeni.Parola.42',
+      currentPassword: DEMO_ACCOUNTS.admin.password,
+    })
+    expect((await failure(change)).code).toBe('forbidden')
   })
 
   it('signs out and notifies listeners', async () => {
@@ -131,9 +211,10 @@ describe('user administration', () => {
     const first = await authService.signIn('yeni.editor@kasif.dev', tempPassword)
     expect(first.next).toBe('change-password')
 
-    const weak = await failure(authService.changePassword('kisa1'))
+    // A fresh sign-in with the temporary password is proof enough: no current password asked.
+    const weak = await failure(authService.changePassword({ newPassword: 'kisa1' }))
     expect(weak.code).toBe('validation')
-    const done = await authService.changePassword('Yepyeni.Parola.42')
+    const done = await authService.changePassword({ newPassword: 'Yepyeni.Parola.42' })
     expect(done.next).toBe('done')
     expect(authService.getSession()?.user.mustChangePassword).toBe(false)
   })

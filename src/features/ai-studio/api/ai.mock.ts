@@ -9,6 +9,7 @@ import {
   newItemId,
   newStepId,
   sequenceItemIcon,
+  shuffleStable,
   svgDescription,
   uniqueSlug,
   AI_ICON_MAX_BYTES,
@@ -216,27 +217,41 @@ function applyText(step: Step, topic: string): Step {
   ]
   if (base.type === 'info')
     return { ...base, body: text.answer, aiGenerated: { fields: [...fields, 'body'] } }
+  // The draft lists the correct options first: shuffle (stable per topic) and give every
+  // option the same look, so neither position, icon nor color gives the answer away.
   if (base.type === 'choose-correct') {
+    const icon = pickEmoji(topic)
+    const choices = shuffleStable(
+      text.options.map((label, index) => ({ label, correct: index < text.correctCount })),
+      `${topic}:choose-correct`,
+    )
     return {
       ...base,
-      options: text.options.map((label, index) => ({
+      options: choices.map(({ label, correct }) => ({
         id: newItemId('o'),
         label,
-        icon: index < text.correctCount ? '✅' : '🎩',
-        color: index < text.correctCount ? ('green' as const) : ('purple' as const),
-        correct: index < text.correctCount,
-        feedback: index < text.correctCount ? `${label} doğru!` : `${label} işe yaramaz! 😄`,
+        icon,
+        color: 'sky' as const,
+        correct,
+        feedback: correct ? `${label} doğru!` : `${label} işe yaramaz! 😄`,
       })),
       aiGenerated: { fields: [...fields, 'options'] },
     }
   }
   if (base.type === 'quiz') {
-    const options = text.options.map((label) => ({ id: newItemId('q'), label }))
+    const answers = shuffleStable(
+      text.options.map((label, index) => ({
+        id: newItemId('q'),
+        label,
+        correct: index < text.correctCount,
+      })),
+      `${topic}:quiz`,
+    )
     return {
       ...base,
       question: text.title,
-      options,
-      correctOptionId: options[0]?.id ?? '',
+      options: answers.map(({ id, label }) => ({ id, label })),
+      correctOptionId: answers.find((answer) => answer.correct)?.id ?? '',
       explanation: text.answer.replace(/\*\*/g, ''),
       aiGenerated: { fields: [...fields, 'options'] },
     }

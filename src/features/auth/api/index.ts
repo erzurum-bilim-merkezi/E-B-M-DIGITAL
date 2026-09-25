@@ -8,6 +8,7 @@ export const userAdminService: UserAdminService = createMockUserAdminService()
 export type {
   AuthService,
   CreatedUser,
+  PasswordChange,
   SignInResult,
   StaffSession,
   TotpEnrollment,

@@ -11,7 +11,7 @@ import {
   TextField,
 } from '../fields'
 import { BlockEmojiField } from './block-fields'
-import { firstUnused, itemName } from './list-items'
+import { blankItemError, firstUnused, itemName } from './list-items'
 import type { BlockEditorProps } from './types'
 
 type ChooseOption = StepOf<'choose-correct'>['options'][number]
@@ -31,6 +31,7 @@ export function ChooseCorrectEditor({
   onChange,
   issueFor,
 }: BlockEditorProps<'choose-correct'>) {
+  const optionsIssue = issueFor('options')
   const correctCount = step.options.filter((option) => option.correct).length
   const wrongCount = step.options.length - correctCount
   const createOption = (): ChooseOption => ({
@@ -67,7 +68,7 @@ export function ChooseCorrectEditor({
         max={6}
         create={createOption}
         addLabel="Seçenek ekle"
-        error={issueFor('options')}
+        error={optionsIssue}
         itemLabel={(option, index) => itemName(option.label, `Seçenek ${index + 1}`)}
         renderItem={(option, update) => (
           <div className="flex flex-col gap-4">
@@ -79,6 +80,7 @@ export function ChooseCorrectEditor({
                 onChange={(label) => update({ ...option, label })}
                 max={24}
                 required
+                error={blankItemError(optionsIssue, option.label, 'Seçenek adı gerekli.')}
                 placeholder="ör. Su"
               />
               <BlockEmojiField
@@ -135,6 +137,7 @@ export function CompareCardsEditor({
   onChange,
   issueFor,
 }: BlockEditorProps<'compare-cards'>) {
+  const cardsIssue = issueFor('cards')
   const createCard = (): CompareCard => ({
     id: newItemId('c'),
     title: '',
@@ -169,7 +172,7 @@ export function CompareCardsEditor({
         max={3}
         create={createCard}
         addLabel="Kart ekle"
-        error={issueFor('cards')}
+        error={cardsIssue}
         itemLabel={(card, index) => itemName(card.title, `Kart ${index + 1}`)}
         renderItem={(card, update) => (
           <div className="flex flex-col gap-4">
@@ -181,6 +184,7 @@ export function CompareCardsEditor({
                 onChange={(title) => update({ ...card, title })}
                 max={30}
                 required
+                error={blankItemError(cardsIssue, card.title, 'Başlık gerekli.')}
                 placeholder="ör. Tohum"
               />
               <BlockEmojiField
@@ -197,6 +201,7 @@ export function CompareCardsEditor({
               max={160}
               rows={2}
               required
+              error={blankItemError(cardsIssue, card.text, 'Kart metni gerekli.')}
             />
             <TextField
               id={fieldId(step.id, `cards-${card.id}-detail`)}
@@ -225,6 +230,8 @@ export function CompareCardsEditor({
 
 export function QuizEditor({ step, onChange, issueFor }: BlockEditorProps<'quiz'>) {
   const answerId = fieldId(step.id, 'correctOptionId')
+  const optionsIssue = issueFor('options')
+  const answerIssue = issueFor('correctOptionId')
 
   const setOptions = (options: QuizOption[]) => {
     const wasListed = step.options.some((option) => option.id === step.correctOptionId)
@@ -259,7 +266,7 @@ export function QuizEditor({ step, onChange, issueFor }: BlockEditorProps<'quiz'
         max={4}
         create={(): QuizOption => ({ id: newItemId('q'), label: '' })}
         addLabel="Seçenek ekle"
-        error={issueFor('options')}
+        error={optionsIssue}
         itemLabel={(option, index) => itemName(option.label, `Seçenek ${index + 1}`)}
         renderItem={(option, update) => (
           <TextField
@@ -269,6 +276,7 @@ export function QuizEditor({ step, onChange, issueFor }: BlockEditorProps<'quiz'
             onChange={(label) => update({ ...option, label })}
             max={80}
             required
+            error={blankItemError(optionsIssue, option.label, 'Seçenek metni gerekli.')}
             placeholder="ör. Yapraklarında"
           />
         )}
@@ -287,7 +295,8 @@ export function QuizEditor({ step, onChange, issueFor }: BlockEditorProps<'quiz'
           value={step.correctOptionId}
           onValueChange={(correctOptionId) => onChange({ ...step, correctOptionId })}
           aria-labelledby={`${answerId}-label`}
-          aria-describedby={`${answerId}-description`}
+          aria-describedby={`${answerId}-description${answerIssue ? ` ${answerId}-error` : ''}`}
+          aria-invalid={answerIssue ? true : undefined}
           className="flex flex-col gap-2.5"
         >
           {step.options.map((option, index) => (
@@ -299,6 +308,11 @@ export function QuizEditor({ step, onChange, issueFor }: BlockEditorProps<'quiz'
             />
           ))}
         </RadioGroup>
+        {answerIssue && (
+          <p id={`${answerId}-error`} role="alert" className="text-xs font-medium text-danger">
+            {answerIssue}
+          </p>
+        )}
       </div>
       <TextField
         id={fieldId(step.id, 'explanation')}

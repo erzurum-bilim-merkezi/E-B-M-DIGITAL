@@ -13,6 +13,21 @@ export type BlockProps<T extends BlockType> = {
   onQuizAnswer?: ((answer: { correct: boolean; optionId: string }) => void) | undefined
 }
 
+/** The card icon as the emoji stage's emoji (library and uploaded icons fall back to ✨). */
+export function iconEmoji(step: { icon: { kind: string; value?: string } }) {
+  return step.icon.kind === 'emoji' && step.icon.value ? step.icon.value : undefined
+}
+
+const NBSP = String.fromCharCode(0xa0)
+
+/**
+ * Next text for a live region (WCAG 4.1.3): when it equals the current text, a trailing
+ * no-break space is toggled so the region's content still changes and is read out again.
+ */
+export function reannounce(previous: string | null, next: string) {
+  return previous === next ? next + NBSP : next
+}
+
 /** Wraps `onComplete` so it fires once per mount, whatever the block does. */
 export function useCompleteOnce(onComplete: (meta: BlockCompletion) => void) {
   const done = useRef(false)

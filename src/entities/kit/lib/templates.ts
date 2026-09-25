@@ -5,6 +5,7 @@ import {
   type KitDocument,
   type ThemePreset,
 } from '../model/kit.ts'
+import { RESERVED_STEP_SLUGS } from '../model/primitives.ts'
 import { KUCUK_CIFTCILER } from '../samples/kucuk-ciftciler.ts'
 import { createDefaultStep } from './block-catalog.ts'
 import { newStepId } from './ids.ts'
@@ -95,13 +96,23 @@ export type NewKitInput = {
   icon?: KitDocument['icon']
 }
 
-/** Unique slug among `taken`: "tohum" → "tohum-2" … */
+/** Shortest slug `slugSchema` accepts. */
+const MIN_SLUG_LENGTH = 2
+
+/**
+ * Unique slug among `taken`: "tohum" → "tohum-2" … Always valid for `stepSlugSchema`: a title
+ * too short for a slug ("A", "Ö") gets the fallback in front ("kart-a"), and reserved addresses
+ * ("Tamamlandı" → "tamamlandi") are treated as taken ("tamamlandi-2").
+ */
 export function uniqueSlug(base: string, taken: ReadonlySet<string>, fallback = 'kart') {
-  const root = slugifyTr(base, 50) || fallback
-  if (!taken.has(root)) return root
+  const slug = slugifyTr(base, 50)
+  const root = !slug ? fallback : slug.length < MIN_SLUG_LENGTH ? `${fallback}-${slug}` : slug
+  const isTaken = (candidate: string) =>
+    taken.has(candidate) || RESERVED_STEP_SLUGS.includes(candidate)
+  if (!isTaken(root)) return root
   for (let n = 2; ; n++) {
     const candidate = `${root}-${n}`
-    if (!taken.has(candidate)) return candidate
+    if (!isTaken(candidate)) return candidate
   }
 }
 

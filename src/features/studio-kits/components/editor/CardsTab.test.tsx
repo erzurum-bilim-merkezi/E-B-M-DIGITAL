@@ -4,6 +4,7 @@ import {
   BLOCK_CATALOG,
   formatCardCode,
   KUCUK_CIFTCILER,
+  MAX_KIT_STEPS,
   validateKitForPublish,
   type KitDocument,
   type Step,
@@ -432,6 +433,67 @@ describe('CardsTab', () => {
     renderCards(kit)
 
     expect(screen.getByRole('button', { name: 'Kart ekle' })).toBeDisabled()
+  })
+
+  it('undoes a deletion after a new card took the deleted card’s address', async () => {
+    const kit = await createKit()
+    const { user } = renderCards(kit)
+    const addQuiz = async () => {
+      await user.click(within(cardsPanel()).getByRole('button', { name: 'Kart ekle' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Kart ekle' })
+      await user.click(within(dialog).getByRole('button', { name: /^Quiz/ }))
+    }
+
+    await addQuiz()
+    await user.click(screen.getByRole('button', { name: 'Soru zamanı için işlemler' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Sil' }))
+    await addQuiz()
+    await user.click(within(cardsPanel()).getByRole('button', { name: 'Geri al' }))
+
+    expect(listedTitles().slice(-2)).toEqual(['Soru zamanı', 'Soru zamanı'])
+    // Autosave succeeds: the restored card got a free address instead of a duplicate one.
+    await waitFor(
+      async () => {
+        const saved = await kitRepository.get(kit.id)
+        expect(saved.draft.steps.map((step) => step.slug).slice(-2)).toEqual([
+          'soru-zamani-2',
+          'soru-zamani',
+        ])
+      },
+      { timeout: 3_000 },
+    )
+  })
+
+  it('explains why a deletion cannot be undone while the kit is full', async () => {
+    const steps = Array.from({ length: MAX_KIT_STEPS }, (_, index) => ({
+      ...TOHUM!,
+      id: `s-kart-${index + 1}`,
+      slug: `kart-${index + 1}`,
+      title: `Kart ${index + 1}`,
+      qrCode: formatCardCode('KC', index + 1),
+    }))
+    const kit = await createKit({ ...KUCUK_CIFTCILER, steps, qrSequence: MAX_KIT_STEPS })
+    const { user } = renderCards(kit)
+
+    await user.click(screen.getByRole('button', { name: 'Kart 1 için işlemler' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Sil' }))
+    const undoButton = within(cardsPanel()).getByRole('button', { name: 'Geri al' })
+    expect(undoButton).not.toHaveAttribute('aria-disabled')
+
+    await user.click(within(cardsPanel()).getByRole('button', { name: 'Kart ekle' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kart ekle' })
+    await user.click(within(dialog).getByRole('button', { name: /^Quiz/ }))
+
+    expect(undoButton).toHaveAttribute('aria-disabled', 'true')
+    expect(undoButton).toHaveAccessibleDescription(
+      'Kit 30 kartla dolu; geri almak için önce bir kart silin.',
+    )
+    undoButton.focus()
+    await user.keyboard('{Enter}')
+
+    expect(listedTitles()).toHaveLength(MAX_KIT_STEPS)
+    expect(listedTitles()).not.toContain('Kart 1')
+    expect(within(cardsPanel()).getByText('“Kart 1” silindi.')).toBeInTheDocument()
   })
 
   it('previews the selected card on a phone or tablet and resets the preview', async () => {

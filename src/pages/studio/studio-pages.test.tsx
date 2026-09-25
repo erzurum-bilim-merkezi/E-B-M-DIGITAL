@@ -186,6 +186,18 @@ describe('Studio for editors', () => {
     expect(screen.queryByRole('link', { name: /#[0-9A-Z]{4}/ })).not.toBeInTheDocument()
   })
 
+  it('password page asks for the current password on a voluntary change', async () => {
+    renderApp('/studio/parola')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Yeni parolanızı belirleyin' }),
+    ).toBeVisible()
+    expect(screen.getByLabelText(/Mevcut parola/)).toHaveAttribute(
+      'autocomplete',
+      'current-password',
+    )
+  })
+
   it('cannot export analytics CSV (admin only)', async () => {
     renderApp('/studio/analitik')
 

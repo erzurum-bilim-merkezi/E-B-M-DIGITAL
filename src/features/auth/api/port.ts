@@ -16,6 +16,13 @@ export type SignInResult =
 
 export type TotpEnrollment = { secret: string; uri: string }
 
+/**
+ * A password change. `currentPassword` is required unless the user signed in with a temporary
+ * password (`mustChangePassword`) — then the fresh sign-in already proved it. Wrong current
+ * passwords count toward the sign-in lockout (`rate_limited` once it trips).
+ */
+export type PasswordChange = { newPassword: string; currentPassword?: string | undefined }
+
 /** ADR 0015: every feature talks to its backend through a port; adapters are mock | supabase. */
 export type AuthService = {
   getSession(): StaffSession | null
@@ -24,7 +31,7 @@ export type AuthService = {
   verifyTotp(code: string): Promise<SignInResult>
   startTotpEnrollment(): Promise<TotpEnrollment>
   confirmTotpEnrollment(code: string): Promise<SignInResult>
-  changePassword(newPassword: string): Promise<SignInResult>
+  changePassword(change: PasswordChange): Promise<SignInResult>
   signOut(): Promise<void>
   /** Test/demo only: pretend the session expired (the next call answers 401). */
   expireSession(): void

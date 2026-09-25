@@ -59,16 +59,23 @@ for (const colorScheme of ['light', 'dark'] as const) {
       }
 
       await page.goto('kit/blok-vitrini')
-      const cards = await page
-        .getByRole('link')
-        .evaluateAll((links) =>
-          links
-            .map((link) => link.getAttribute('href') ?? '')
-            .filter(
-              (href) => /\/kit\/blok-vitrini\/[^/]+$/.test(href) && !href.endsWith('/tamamlandi'),
-            ),
-        )
-      expect(cards.length).toBe(13)
+      // The card list renders after the kit loads — poll instead of reading the first frame.
+      let cards: string[] = []
+      await expect
+        .poll(async () => {
+          cards = await page
+            .getByRole('link')
+            .evaluateAll((links) =>
+              links
+                .map((link) => link.getAttribute('href') ?? '')
+                .filter(
+                  (href) =>
+                    /\/kit\/blok-vitrini\/[^/]+$/.test(href) && !href.endsWith('/tamamlandi'),
+                ),
+            )
+          return cards.length
+        })
+        .toBe(13)
       for (const href of cards) {
         await page.goto(href.replace(/^\/E-B-M-DIGITAL\//, ''))
         await audit(page, href.split('/').pop() ?? href, findings)

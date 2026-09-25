@@ -93,6 +93,43 @@ export default defineConfig(({ mode }) => {
           cacheId: 'kasif',
           cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+          // Supabase Storage (plan §3.6): kits keep working when the centre's Wi-Fi drops.
+          runtimeCaching: [
+            {
+              // catalog.json, qr-index.json, latest.json change on every publish.
+              urlPattern: ({ url }) =>
+                url.pathname.includes('/storage/v1/object/public/published/') &&
+                !/\/v\d+\.json$/.test(url.pathname),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'kasif-published-index',
+                networkTimeoutSeconds: 4,
+                cacheableResponse: { statuses: [200] },
+              },
+            },
+            {
+              // v<n>.json never changes once written.
+              urlPattern: ({ url }) =>
+                url.pathname.includes('/storage/v1/object/public/published/') &&
+                /\/v\d+\.json$/.test(url.pathname),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'kasif-published-versions',
+                cacheableResponse: { statuses: [200] },
+                expiration: { maxEntries: 200 },
+              },
+            },
+            {
+              // Media files have their own id in the name: they never change either.
+              urlPattern: ({ url }) => url.pathname.includes('/storage/v1/object/public/media/'),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'kasif-media',
+                cacheableResponse: { statuses: [200] },
+                expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 60 },
+              },
+            },
+          ],
         },
         // Pre-launch the installable app is the coming-soon page; afterwards it is Kâşif.
         manifest: appEnv.VITE_COMING_SOON

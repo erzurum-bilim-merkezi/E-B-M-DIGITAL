@@ -48,7 +48,7 @@ jobs:
           KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           expected="$(ls supabase/migrations/*.sql | sort | tail -1 | xargs basename | cut -d_ -f1)"
-          live="$(curl -fsS -X POST "$URL/rest/v1/rpc/schema_version" -H "apikey: $KEY" \
+          live="$(curl -fsS -X POST "${URL%/}/rest/v1/rpc/schema_version" -H "apikey: $KEY" \
             -H 'Content-Type: application/json' -d '{}' | tr -d '"')"
           echo "repository: $expected · live: $live"
           if ! printf '%s' "$live" | grep -Eq '^[0-9]{14}$'; then

@@ -80,7 +80,7 @@ jobs:
             echo "::error::Secret BACKUP_AGE_PUBLIC_KEY is missing: the backup cannot be encrypted."
             exit 1
           fi
-          sudo apt-get install -y age > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y age > /dev/null
           mkdir -p backup
           supabase db dump --db-url "$SUPABASE_DB_URL" --role-only -f backup/roles.sql
           supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/schema.sql

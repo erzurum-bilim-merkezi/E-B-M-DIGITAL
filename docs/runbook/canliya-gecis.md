@@ -134,7 +134,8 @@ GitHub → **Actions → "DB migrate (live)" → Run workflow**
 
 1. **confirm** kutusuna Project ID'yi yaz.
 2. **İlk onay: "Dry run (read-only)".** Bekleyen migration'ları listeler, hiçbir şeyi değiştirmez.
-   Listeyi çalışmanın **Summary** sayfasında oku.
+   Listeyi çalışmanın **Summary** sayfasında oku. İlk kurulumda canlı veritabanı boştur: liste
+   `supabase/migrations` klasöründeki 11 dosyanın tamamıdır.
 3. **İkinci onay: "Backup · push · verify".** Liste beklediğin gibiyse onayla. Bu adım:
    1. Şifreli yedek alır (7 gün saklanan artifact).
    2. Migration'ları uygular.
@@ -203,7 +204,8 @@ Açılıştan sonra önizleme **olmayan** bir telefonla bir kart oyna ve Studio 
 - **Keep-alive:** Free plan 7 gün hareketsiz projeyi duraklatır. "Keep the Supabase project
   awake" workflow'u 3 günde bir çalışır.
   - GitHub, **60 gün commit olmayan** herkese açık depoda zamanlanmış workflow'ları kapatır.
-    Actions → "Keep the Supabase project awake" → **Enable workflow** ile yeniden aç.
+    Bu hem keep-alive'ı hem haftalık yedeği durdurur. Actions → "Keep the Supabase project
+    awake" ve "Weekly backup (live)" → **Enable workflow** ile yeniden aç.
   - Yedek olarak dışarıdan bir zamanlanmış istek kur (ör. cron-job.org, 3 günde bir):
     `POST https://<project-ref>.supabase.co/rest/v1/rpc/ping`, başlıklar `apikey:
 sb_publishable_…` ve `Content-Type: application/json`, gövde `{}`.

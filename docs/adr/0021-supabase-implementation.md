@@ -60,9 +60,15 @@ test edilmiş davranışı** esas alındı; plandan ayrılan kararlar burada kay
 - **Yazma bütçeleri (Free plan veritabanı dolmasın):**
   - Etkinlikler: cihaz başına dakikada 120 ve saatte 1 500, ağ (IP) başına günde 50 000.
   - Yeni kâşif: cihaz başına saatte 30, ağ başına günde 500.
-  - IP, Cloudflare'in `cf-connecting-ip` başlığından okunur; istemci bunu değiştiremez.
-  - Sınırlar yoğun bir merkez gününün üstündedir. Aşan istek `rate_limited` alır; Kâşif
-    uygulaması olayları kuyrukta tutar ve sonra yeniden gönderir.
+  - Yalnızca kaydedilen etkinlikler sayılır; tekrarlar ve reddedilenler bütçe harcamaz.
+  - Personelin etkinleştirdiği merkez tabletleri ağ bütçesine tabi değildir. Böylece merkezin
+    Wi-Fi'ındaki biri bütçeyi harcayıp tabletleri durduramaz.
+  - IP, Cloudflare'in `cf-connecting-ip` başlığından okunur; istemci bunu değiştiremez. IPv6'da
+    /64 ağı tek adres sayılır.
+  - Aşan istek `rate_limited` alır ve paket geri alınır; Kâşif uygulaması olayları kuyrukta
+    tutar, sonra yeniden gönderir. Kuyruk 500'ü aşarsa önce ilerleme dışındaki olaylar düşer.
+  - Kalan risk: merkezin ağındaki biri, kişisel telefonların ağ bütçesini bir gün için
+    harcayabilir. Tabletler etkilenmez.
 - **Haftalık yedek:** Veritabanı ve `media`/`ai` dosyaları her hafta `age` ile şifrelenip 90 gün
   saklanır ("Weekly backup (live)", ortam `backup`). `published` bucket'ı veritabanından yeniden
   üretilir.
@@ -98,6 +104,12 @@ test edilmiş davranışı** esas alındı; plandan ayrılan kararlar burada kay
     alınan hesap bundan etkilenmez: her istekte `is_active_staff` denetlenir.
   - Depo herkese açık olduğu için Actions log'ları da açıktır. Canlı workflow'lara girilen
     e-posta ve ad, ilk adımda maskelenir; log'da `***` görünür.
+- **Bilinerek kabul edilen risk: açık oturumla parola değişimi.** Açık bir Studio sekmesine
+  erişen biri, mevcut parolayı bilmeden Supabase Auth API'siyle parolayı değiştirebilir.
+  "Secure password change" bunu yalnızca girişten 24 saat sonra engeller ve Studio yeniden
+  kimlik doğrulamayı desteklemez; bu yüzden kapalıdır. Oturumlar sekmeye bağlıdır, erişim jetonu
+  30 dakikadır, admin için 2FA zorunludur. Parola değişimi `audit_log`'a düşer. Personel
+  bilgisayarı kilitlemelidir.
 - **Test yapısı:**
   - DB testleri PGlite'ta (Docker'sız) ve CI'da gerçek yerel yığında aynı paketle koşar.
   - Adapter'lar MSW ile birim testlidir.

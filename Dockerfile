@@ -31,7 +31,10 @@ COPY . .
 RUN npm run build
 # The nginx CSP header applies on top of the page's own: it must allow the same Supabase origin.
 # Regenerated from the same source (src/shared/config/csp.ts) for this build's project.
-RUN if [ "$VITE_BACKEND" = "supabase" ]; then       CSP_BACKEND_ORIGIN="$(node -e 'console.log(new URL(process.env.VITE_SUPABASE_URL).origin)')"         npm run csp:nginx;     fi
+RUN if [ "$VITE_BACKEND" = "supabase" ]; then \
+      CSP_BACKEND_ORIGIN="$(node -e 'console.log(new URL(process.env.VITE_SUPABASE_URL).origin)')" \
+        npm run csp:nginx; \
+    fi
 
 # ---- Runtime: static files served by non-root nginx ----
 FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime

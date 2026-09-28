@@ -12,6 +12,7 @@ import {
   fromRpcError,
   json,
 } from '../_shared/http.ts'
+import { projectKeys } from '../_shared/keys.ts'
 import { generateTempPassword } from '../_shared/temp-password.ts'
 
 const bodySchema = z.discriminatedUnion('action', [
@@ -33,6 +34,13 @@ function env(name: string) {
   return value
 }
 
+/** The publishable and secret keys (new named keys first, legacy ones last). */
+function keys() {
+  const { publishable, secret } = projectKeys((name) => Deno.env.get(name))
+  if (!publishable || !secret) throw failures.unavailable()
+  return { publishable, secret }
+}
+
 async function rpc(client: SupabaseClient, name: string, args: Record<string, unknown> = {}) {
   const { data, error } = await client.rpc(name, args)
   if (error) throw fromRpcError(error)
@@ -48,11 +56,11 @@ Deno.serve(async (request) => {
     if (!authorization?.startsWith('Bearer ')) throw failures.unauthorized()
 
     const url = env('SUPABASE_URL')
-    const caller = createClient(url, env('SUPABASE_ANON_KEY'), {
+    const caller = createClient(url, keys().publishable, {
       global: { headers: { Authorization: authorization } },
       auth: NO_SESSION,
     })
-    const admin = createClient(url, env('SUPABASE_SERVICE_ROLE_KEY'), { auth: NO_SESSION })
+    const admin = createClient(url, keys().secret, { auth: NO_SESSION })
 
     const body = bodySchema.safeParse(await request.json().catch(() => null))
     if (!body.success) throw failures.validation()

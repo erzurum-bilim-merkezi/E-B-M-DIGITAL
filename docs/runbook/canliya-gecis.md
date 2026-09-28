@@ -41,9 +41,9 @@ workflow'dur. Canlı veritabanına elle SQL çalıştırılmaz (ADR 0016).
 
 **Project Settings → API Keys**
 
-- **Legacy API keys: devre dışı bırakma.** Edge Function'lar (`admin-users`, `ai-generate`)
-  Supabase'in otomatik verdiği `anon` ve `service_role` anahtarlarıyla çalışır. Kapatılırsa
-  kullanıcı ekleme ve yapay zekâ çalışmaz.
+- Edge Function'lar Supabase'in kendilerine verdiği yeni anahtarları (`sb_publishable_…`,
+  `sb_secret_…`) kullanır; eski (legacy) `anon`/`service_role` anahtarları yalnızca yedek
+  olarak okunur. Ek ayar gerekmez.
 
 **Project Settings → Data API**
 

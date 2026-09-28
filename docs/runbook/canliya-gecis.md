@@ -39,6 +39,12 @@ workflow'dur. Canlı veritabanına elle SQL çalıştırılmaz (ADR 0016).
 - **CAPTCHA: kapalı kalsın.** Uygulama henüz CAPTCHA jetonu göndermez. Açılırsa çocuk
   cihazları ve personel giriş yapamaz.
 
+**Project Settings → API Keys**
+
+- **Legacy API keys: devre dışı bırakma.** Edge Function'lar (`admin-users`, `ai-generate`)
+  Supabase'in otomatik verdiği `anon` ve `service_role` anahtarlarıyla çalışır. Kapatılırsa
+  kullanıcı ekleme ve yapay zekâ çalışmaz.
+
 **Project Settings → Data API**
 
 - **Exposed schemas:** yalnızca `public` kalsın. `graphql_public` varsa listeden çıkar.
@@ -77,6 +83,13 @@ Aynı ekranda **Environment secrets**:
 | `SUPABASE_SECRET_KEY`      | Supabase → Project Settings → **API Keys** → `sb_secret_…` (yalnızca ilk admin ve 2FA sıfırlama)   |
 | `BACKUP_AGE_PUBLIC_KEY`    | Yedek şifreleme anahtarının **açık** kısmı (`age1…`), aşağıya bak                                  |
 | `BOOTSTRAP_ADMIN_PASSWORD` | İlk admin'in **geçici** parolası (≥ 10 karakter, harf + rakam). 8. adımdan sonra sil.              |
+
+Ayrıca bir ortam daha aç: **`backup`** (haftalık yedek için).
+
+- **Required reviewers: yok.** Zamanlanmış yedek onay bekleyemez.
+- **Deployment branches:** yalnızca `main`.
+- **Secrets:** `SUPABASE_DB_URL`, `SUPABASE_PROJECT_REF`, `SUPABASE_SECRET_KEY`,
+  `BACKUP_AGE_PUBLIC_KEY`. Değerleri `production` ortamındakilerle aynıdır.
 
 **Yedek anahtarı (bir kez):**
 
@@ -120,12 +133,12 @@ Model adları sık değişir. AI Studio'daki listeyle karşılaştır; ad yanlı
 GitHub → **Actions → "DB migrate (live)" → Run workflow**
 
 1. **confirm** kutusuna Project ID'yi yaz.
-2. Onayla.
-3. Workflow sırasıyla:
+2. **İlk onay: "Dry run (read-only)".** Bekleyen migration'ları listeler, hiçbir şeyi değiştirmez.
+   Listeyi çalışmanın **Summary** sayfasında oku.
+3. **İkinci onay: "Backup · push · verify".** Liste beklediğin gibiyse onayla. Bu adım:
    1. Şifreli yedek alır (7 gün saklanan artifact).
-   2. Bekleyen migration'ları listeler.
-   3. Uygular.
-   4. Canlı `schema_version()`'ın depodaki son migration olduğunu doğrular.
+   2. Migration'ları uygular.
+   3. Canlı `schema_version()`'ın depodaki son migration olduğunu doğrular.
 
 Hata verirse dur ve bana log'u gönder. Elle SQL çalıştırma.
 
@@ -140,6 +153,13 @@ Bu adım `admin-users` ve `ai-generate` fonksiyonlarını yayınlar.
 1. **Actions → "Bootstrap first admin (live)" → Run workflow**.
 2. E-posta ve adını gir, onayla.
 3. Hemen ardından `BOOTSTRAP_ADMIN_PASSWORD` secret'ını **sil**.
+4. İlk girişi **72 saat içinde** yap: geçici parolanın süresi dolar.
+
+**72 saat geçtiyse ya da e-postan başkası tarafından önceden kaydedildiyse:**
+
+1. Supabase → **Authentication → Users** → o kullanıcıyı sil. Profili de onunla silinir.
+2. `BOOTSTRAP_ADMIN_PASSWORD` secret'ını yeniden oluştur.
+3. "Bootstrap first admin (live)" workflow'unu yeniden çalıştır.
 
 ## 8. Deploy ("yakında" modu hâlâ açık)
 
@@ -152,8 +172,9 @@ Bu adım `admin-users` ve `ai-generate` fonksiyonlarını yayınlar.
 İlk giriş sırası:
 
 1. Geçici parola ile gir.
-2. Yeni parolanı belirle.
-3. Telefonuna doğrulayıcıyı (Google Authenticator vb.) ekle, 6 haneli kodla doğrula.
+2. Telefonuna doğrulayıcıyı (Google Authenticator vb.) ekle, 6 haneli kodla doğrula. Studio
+   yöneticiden önce bunu ister.
+3. Yeni parolanı belirle.
 4. **Kullanıcılar** sayfasından **ikinci bir admin** ekle; o da 2FA'sını kurmalı. Tek admin
    kalması telefon kaybında Studio'yu kilitler.
 
@@ -162,8 +183,12 @@ Bu adım `admin-users` ve `ai-generate` fonksiyonlarını yayınlar.
 1. Studio'da ilk kiti oluştur ve **liste dışı** yayınla.
 2. QR sayfasından kit QR'ını yazdır.
 3. Tableti **önizleme cihazı** yap: Studio → Ayarlar. Bu cihaz "yakında" modunu atlar.
-4. Tabletle QR'ı okut, katıl, birkaç kart oyna.
-5. Studio panosunda etkinliği gör.
+4. Tabletle QR'ı okut, katıl, birkaç kart oyna. Ekrandaki **Kâşif kodunu** not al.
+5. Kaydın sunucuya ulaştığını ikinci bir önizleme cihazıyla (ya da başka bir tarayıcıyla) doğrula:
+   "Kâşif kodum var" ile gir, oynadığın kartların ✓ işaretli geldiğini gör.
+
+Önizleme cihazlarının etkinliği panoya ve Kâşifler listesine **bilerek** yazılmaz. Pano açılıştan
+sonra, normal cihazlarla dolar (10. adım).
 
 ## 10. Açılış
 
@@ -171,12 +196,24 @@ GitHub Variables → **`VITE_COMING_SOON` = `false`** → **Actions → Deploy �
 
 Build, mock arka uçla açılışı reddeder. `VITE_BACKEND=supabase` olduğu için açılış yapılır.
 
+Açılıştan sonra önizleme **olmayan** bir telefonla bir kart oyna ve Studio panosunda gör.
+
 ## Sonrası
 
 - **Keep-alive:** Free plan 7 gün hareketsiz projeyi duraklatır. "Keep the Supabase project
-  awake" workflow'u 3 günde bir çalışır (ek ayar gerekmez).
-- **Yedekler:** her `db-migrate` öncesi otomatik alınır.
-  - Açmak için: `age -d -i kasif-yedek.key backup-….tar.gz.age > yedek.tar.gz`
+  awake" workflow'u 3 günde bir çalışır.
+  - GitHub, **60 gün commit olmayan** herkese açık depoda zamanlanmış workflow'ları kapatır.
+    Actions → "Keep the Supabase project awake" → **Enable workflow** ile yeniden aç.
+  - Yedek olarak dışarıdan bir zamanlanmış istek kur (ör. cron-job.org, 3 günde bir):
+    `POST https://<project-ref>.supabase.co/rest/v1/rpc/ping`, başlıklar `apikey:
+sb_publishable_…` ve `Content-Type: application/json`, gövde `{}`.
+- **Yedekler:**
+  - Her pazar 04:23'te (İstanbul) "Weekly backup (live)" veritabanını ve yüklenen medyayı
+    şifreli yedekler. 90 gün saklanır: Actions → çalışma → **Artifacts**.
+  - Her `db-migrate` öncesi ayrıca bir yedek alınır (7 gün).
+  - Açmak için: `age -d -i kasif-yedek.key weekly-backup-….tar.gz.age > yedek.tar.gz`
+  - İçinde `roles.sql`, `schema.sql`, `data.sql` ve `storage/` (media ve ai dosyaları) vardır.
+    Geri yükleme gerekirse bana ulaş; canlıya elle SQL çalıştırılmaz.
 - **2FA kaybı:** **Actions → "Reset an admin's 2FA (live, emergency)"** → e-posta → onay.
   - Workflow doğrulayıcıları siler ve hesabın **tüm açık oturumlarını kapatır**. Açık kalmış bir
     sekme en geç 30 dakika içinde düşer.

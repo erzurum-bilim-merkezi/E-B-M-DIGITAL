@@ -47,14 +47,25 @@ test edilmiş davranışı** esas alındı; plandan ayrılan kararlar burada kay
   sınırlarıyla sınırlanır; admin için TOTP zorunludur. Mevcut parola kontrolü ve Kâşif kodu ise
   kendi 5 hata / 15 dakika kilidini uygular (IP başına ek sınır).
 - **Yapay zekâ çizimleri ayrı `ai` bucket'ındadır:**
-  - Yalnızca `ai-generate` fonksiyonu servis rolüyle yazar. Personel kendi SVG'sini hiçbir
-    bucket'a yükleyemez (`media` SVG kabul etmez).
+  - Yalnızca `ai-generate` fonksiyonu servis rolüyle yazar. Personel Storage'a doğrudan SVG
+    yükleyemez (`media` SVG kabul etmez).
+  - Studio'nun kaydettiği çizim (`save-scene`, `save-icon`) istemciden gelir. Bu yüzden fonksiyon
+    onu depolamadan önce `checkAiSvg` ve iyi biçimlilik denetiminden geçirir.
   - Dosya yolları `scenes/<grup>/<durum>.svg` ve `icons/<id>.svg` biçimindedir.
   - `checkAiSvg` bir izin listesidir: yalnızca çizim öğeleri ve öznitelikleri kabul edilir.
     Ad alanı öneki, `xmlns:` bildirimi, DOCTYPE/ENTITY/CDATA ve dış bağlantı reddedilir. SVG
     doğrudan açılsa bile betik çalışamaz.
   - Kota, sağlayıcı çağrılmadan önce veritabanında tek adımda ayrılır (`ai_reserve`). Paralel
     istekler günlük sınırı aşamaz.
+- **Yazma bütçeleri (Free plan veritabanı dolmasın):**
+  - Etkinlikler: cihaz başına dakikada 120 ve saatte 1 500, ağ (IP) başına günde 50 000.
+  - Yeni kâşif: cihaz başına saatte 30, ağ başına günde 500.
+  - IP, Cloudflare'in `cf-connecting-ip` başlığından okunur; istemci bunu değiştiremez.
+  - Sınırlar yoğun bir merkez gününün üstündedir. Aşan istek `rate_limited` alır; Kâşif
+    uygulaması olayları kuyrukta tutar ve sonra yeniden gönderir.
+- **Haftalık yedek:** Veritabanı ve `media`/`ai` dosyaları her hafta `age` ile şifrelenip 90 gün
+  saklanır ("Weekly backup (live)", ortam `backup`). `published` bucket'ı veritabanından yeniden
+  üretilir.
 - **Arşivlenen kit adresinden açılmaz:** Yeniden üretim, arşivdeki kitin `latest.json` dosyasını
   siler; kit kataloğa ve QR dizinine "arşivde" olarak düşer. Değişmez `v<n>.json` dosyaları
   kalır. Adresleri tahmin edilebilir, ama hiçbir yerden bu dosyalara bağlantı verilmez.

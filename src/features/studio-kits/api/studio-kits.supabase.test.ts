@@ -137,7 +137,7 @@ describe('Supabase kit repository', () => {
     const query = queries[0]
     expect(query?.get('status')).toBe('eq.draft')
     // Folded like toLocaleLowerCase('tr') for kit_search, without the filter syntax.
-    expect(query?.get('or')).toBe('(kit_search.like.*ışık   çift*,qr_prefix.eq.IŞIK   ÇIFT)')
+    expect(query?.get('or')).toBe('(kit_search.like.*ışık çift*,qr_prefix.eq.IŞIK ÇIFT)')
     expect(query?.get('order')).toBe('updated_at.desc,id.asc')
   })
 

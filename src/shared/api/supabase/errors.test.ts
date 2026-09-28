@@ -40,6 +40,28 @@ describe('toAppError', () => {
     expect(error.message).toBe('E-posta ya da parola hatalı.')
   })
 
+  it.each([
+    ['anonymous sign-ins turned off', 'anonymous_provider_disabled'],
+    ['sign-ups turned off', 'signup_disabled'],
+    ['the Email provider turned off', 'email_provider_disabled'],
+  ])('says the way in is closed, never "weak password", with %s', (_, code) => {
+    const error = toAppError({ __isAuthError: true, name: 'AuthApiError', status: 422, code })
+    expect(error.code).toBe('unavailable')
+    expect(error.message).toBe('Giriş şu an kapalı. Lütfen bir görevliye haber verin.')
+  })
+
+  it('names password problems only for what they are', () => {
+    const auth = (status: number, code?: string) =>
+      toAppError({ __isAuthError: true, name: 'AuthApiError', status, code })
+    expect(auth(422, 'weak_password').message).toBe('Parola yeterince güçlü değil.')
+    expect(auth(422, 'same_password').message).toBe('Yeni parola eskisinden farklı olmalı.')
+    // A stored session the server no longer knows is no wrong password.
+    expect(auth(400, 'refresh_token_not_found').message).not.toBe('E-posta ya da parola hatalı.')
+    // Without a code, the status still decides.
+    expect(auth(422).message).toBe('Parola yeterince güçlü değil.')
+    expect(auth(400).message).toBe('E-posta ya da parola hatalı.')
+  })
+
   it('tells a deactivated Studio account why it cannot sign in', () => {
     const error = toAppError({
       __isAuthError: true,

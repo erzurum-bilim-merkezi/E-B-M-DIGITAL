@@ -94,14 +94,30 @@ export function toAppError(error: unknown): AppError {
     if (code === 'user_banned') {
       return new AppError('forbidden', 'Hesabınız pasif. Bir yöneticiyle iletişime geçin.')
     }
-    if (code === 'invalid_credentials' || status === 400) {
+    // A way in closed in the Supabase project's Auth settings (runbook §1): anonymous sign-ins
+    // for Kâşif devices, sign-ups (anonymous ones depend on it), the Email provider for staff.
+    if (
+      code === 'anonymous_provider_disabled' ||
+      code === 'signup_disabled' ||
+      code === 'email_provider_disabled' ||
+      code === 'captcha_failed'
+    ) {
+      return new AppError('unavailable', 'Giriş şu an kapalı. Lütfen bir görevliye haber verin.')
+    }
+    if (code === 'invalid_credentials') {
       return new AppError('unauthorized', 'E-posta ya da parola hatalı.')
     }
-    if (code === 'weak_password' || status === 422) {
-      return new AppError('validation', 'Parola yeterince güçlü değil.')
+    if (code === 'weak_password') return new AppError('validation', 'Parola yeterince güçlü değil.')
+    if (code === 'same_password') {
+      return new AppError('validation', 'Yeni parola eskisinden farklı olmalı.')
     }
     if (status === 429 || code === 'over_request_rate_limit') return new AppError('rate_limited')
     if (status === 401 || status === 403) return new AppError('unauthorized')
+    // Older answers without a code: judge by the status alone.
+    if (typeof code !== 'string') {
+      if (status === 400) return new AppError('unauthorized', 'E-posta ya da parola hatalı.')
+      if (status === 422) return new AppError('validation', 'Parola yeterince güçlü değil.')
+    }
   }
 
   if (status === 401) return new AppError('unauthorized')

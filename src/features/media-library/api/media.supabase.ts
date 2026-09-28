@@ -2,7 +2,14 @@ import { z } from 'zod'
 
 import { mediaAssetSchema, type MediaAsset } from '@/entities/studio'
 import { AppError } from '@/shared/api/errors'
-import { mediaObjectUrl, readAll, staffClient, toAppError, unwrap } from '@/shared/api/supabase'
+import {
+  mediaObjectUrl,
+  readAll,
+  searchTerm,
+  staffClient,
+  toAppError,
+  unwrap,
+} from '@/shared/api/supabase'
 import { AUDIO_MAX_BYTES, CAPTIONS_MAX_BYTES, ICON_MAX_BYTES } from '@/shared/lib/media-files'
 
 import type { MediaRepository, MediaUsage, StorageQuota } from './port'
@@ -57,14 +64,12 @@ async function rpc(name: string, args: Record<string, unknown> = {}): Promise<un
 export function createSupabaseMediaRepository(): MediaRepository {
   return {
     async list(filter) {
-      const needle = filter.query
-        .trim()
-        .replace(/[%,()*]/g, ' ')
-        .trim()
+      const needle = searchTerm(filter.query)
       const rows = await readAll((from, to) => {
         let query = staffClient().from('media_assets').select(COLUMNS)
         if (filter.kind !== 'all') query = query.eq('kind', filter.kind)
-        if (needle) query = query.or(`name.ilike.*${needle}*,alt.ilike.*${needle}*`)
+        // Name and alt text with Turkish letter case (media_search), as the mock compares.
+        if (needle) query = query.like('media_search', `*${needle}*`)
         return query.order('created_at', { ascending: false }).order('id').range(from, to)
       })
       return rows.map(toAsset)

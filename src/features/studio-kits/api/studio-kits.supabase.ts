@@ -23,6 +23,7 @@ import {
   isRangeNotSatisfiable,
   mediaObjectUrl,
   readAll,
+  searchTerm,
   staffClient,
   toAppError,
   unwrap,
@@ -231,15 +232,11 @@ async function listKits(
     .select(KIT_COLUMNS, { count: 'exact' })
     .order('updated_at', { ascending: false })
   if (filter.status !== 'all') query = query.eq('status', filter.status)
-  const needle = filter.query
-    .trim()
-    .replace(/[%,()*]/g, ' ')
-    .trim()
+  const needle = searchTerm(filter.query)
   if (needle) {
-    // Prefixes are ASCII A–Z (exact); titles and addresses match anywhere.
-    query = query.or(
-      `draft->>title.ilike.*${needle}*,slug.ilike.*${needle}*,qr_prefix.eq.${needle.toUpperCase()}`,
-    )
+    // Titles and addresses match anywhere with Turkish letter case (kit_search); prefixes are
+    // ASCII A–Z and match exactly.
+    query = query.or(`kit_search.like.*${needle}*,qr_prefix.eq.${needle.toUpperCase()}`)
   }
   const from = (Math.max(1, filter.page) - 1) * filter.pageSize
   const { data, error, count } = await query.order('id').range(from, from + filter.pageSize - 1)

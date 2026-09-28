@@ -306,6 +306,17 @@ begin
 end;
 $$;
 
+-- toLocaleLowerCase('tr') for search and nicknames (the mock's comparison, entities/explorer):
+-- I → ı and İ → i, and the Turkish capitals mapped explicitly so no database locale matters.
+create function private.tr_lower(p_text text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select lower(translate(p_text, 'IİÇĞÖŞÜÂÎÛ', 'ıiçğöşüâîû'))
+$$;
+
 create function private.sha256_hex(p_text text)
 returns text
 language sql

@@ -85,6 +85,23 @@ async function publish(admin: Actor, kit: Kit, visibility = 'public') {
 }
 
 describe('kit repository', () => {
+  it('searches titles with Turkish letter case, as the mock does', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const kit = await create(editor, 'isik', 'IS')
+    await save(editor, kit, { title: 'IŞIK ve Gölge' })
+    const found = (needle: string) =>
+      db()
+        .as(editor)
+        .sql<{ slug: string }>(
+          `select k.slug from public.kits k where public.kit_search(k) like '%' || $1 || '%'`,
+          [needle],
+        )
+    expect(await found('ışık')).toEqual([{ slug: 'isik' }])
+    expect(await found('gölge')).toEqual([{ slug: 'isik' }])
+    // "isik" is the address; the title's ı is no i.
+    expect(await found('işik')).toEqual([])
+  })
+
   it('creates a draft kit owned by the caller and reserves its prefix', async () => {
     const editor = await db().createStaff({ role: 'editor' })
     const kit = await create(editor)

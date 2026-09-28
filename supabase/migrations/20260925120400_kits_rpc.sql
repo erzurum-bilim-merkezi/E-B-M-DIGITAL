@@ -817,3 +817,19 @@ grant execute on function
   public.kit_unarchive(uuid),
   public.publish_log_regenerated()
 to authenticated;
+
+-- Search text of a kit for the Studio list, as the PostgREST computed column `kit_search`: the
+-- title and the address folded like toLocaleLowerCase('tr'), so "ışık" finds "Işık" as in the
+-- mock.
+create function public.kit_search(public.kits)
+returns text
+language sql
+immutable
+-- Only folds the row it is given (already visible to the caller); private.tr_lower is not.
+security definer
+set search_path = ''
+as $$
+  select private.tr_lower(coalesce($1.draft ->> 'title', '')) || E'\n' || $1.slug
+$$;
+
+grant execute on function public.kit_search(public.kits) to authenticated;

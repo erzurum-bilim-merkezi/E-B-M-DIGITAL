@@ -311,6 +311,29 @@ describe('media library', () => {
     })
   })
 
+  it('searches names and alt texts with Turkish letter case', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const id = crypto.randomUUID()
+    await uploaded(id, 'webp', 1000, 'image/webp')
+    await db().as(editor).rpc('media_register', {
+      p_id: id,
+      p_kind: 'image',
+      p_name: 'IŞIK.webp',
+      p_mime: 'image/webp',
+      p_alt: 'Çiçek İçinde bir böcek',
+    })
+    const found = (needle: string) =>
+      db()
+        .as(editor)
+        .sql<{ id: string }>(
+          `select m.id from public.media_assets m where public.media_search(m) like '%' || $1 || '%'`,
+          [needle],
+        )
+    expect(await found('ışık')).toEqual([{ id }])
+    expect(await found('çiçek içinde')).toEqual([{ id }])
+    expect(await found('isik')).toEqual([])
+  })
+
   it.each([
     ['a file that was not uploaded', null, 'image', 'image/webp', 'alt', KS.not_found],
     ['an image over 300 kB', 400_000, 'image', 'image/webp', 'alt', KS.validation],

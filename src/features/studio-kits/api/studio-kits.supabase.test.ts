@@ -126,14 +126,18 @@ describe('Supabase kit repository', () => {
         return HttpResponse.json([kitRow()], { headers: { 'Content-Range': '10-19/25' } })
       }),
     )
-    const page = await kits.list({ status: 'draft', query: 'çift', page: 2, pageSize: 10 })
+    const page = await kits.list({
+      status: 'draft',
+      query: ' IŞIK, (çift) ',
+      page: 2,
+      pageSize: 10,
+    })
 
     expect(page).toMatchObject({ total: 25, page: 2, pageCount: 3 })
     const query = queries[0]
     expect(query?.get('status')).toBe('eq.draft')
-    expect(query?.get('or')).toBe(
-      '(draft->>title.ilike.*çift*,slug.ilike.*çift*,qr_prefix.eq.ÇIFT)',
-    )
+    // Folded like toLocaleLowerCase('tr') for kit_search, without the filter syntax.
+    expect(query?.get('or')).toBe('(kit_search.like.*ışık   çift*,qr_prefix.eq.IŞIK   ÇIFT)')
     expect(query?.get('order')).toBe('updated_at.desc,id.asc')
   })
 

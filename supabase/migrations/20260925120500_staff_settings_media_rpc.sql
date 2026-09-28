@@ -771,3 +771,18 @@ grant execute on function
   public.media_delete(uuid),
   public.storage_quota()
 to authenticated;
+
+-- Search text of a media file (PostgREST computed column `media_search`): name and alt text
+-- folded like toLocaleLowerCase('tr'), as the mock compares them.
+create function public.media_search(public.media_assets)
+returns text
+language sql
+immutable
+-- Only folds the row it is given (already visible to the caller); private.tr_lower is not.
+security definer
+set search_path = ''
+as $$
+  select private.tr_lower($1.name) || E'\n' || private.tr_lower($1.alt)
+$$;
+
+grant execute on function public.media_search(public.media_assets) to authenticated;

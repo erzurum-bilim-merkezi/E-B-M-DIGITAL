@@ -300,8 +300,40 @@ describe('Gemini client', () => {
     ])
 
     const overloaded = fakeFetch(status(503), status(503))
-    const busy = createGeminiProvider({ apiKey: 'k', fetch: overloaded.send })
+    const busy = createGeminiProvider({ apiKey: 'k', fetch: overloaded.send, overloadRetryMs: [] })
     expect((await failure(busy.cardText(card, signal))).kind).toBe('unavailable')
+  })
+
+  it('tries both models again after a pause while Gemini is overloaded', async () => {
+    const { calls, send } = fakeFetch(status(503), status(503), status(503), ok(CARD))
+    const gemini = createGeminiProvider({
+      apiKey: 'k',
+      model: 'gemini-x-flash',
+      lightModel: 'gemini-x-lite',
+      fetch: send,
+      overloadRetryMs: [0, 0],
+    })
+
+    expect((await gemini.cardText(card, signal)).model).toBe('gemini-x-lite')
+    expect(calls.map((call) => call.url.split('/').at(-1))).toEqual([
+      'gemini-x-flash:generateContent',
+      'gemini-x-lite:generateContent',
+      'gemini-x-flash:generateContent',
+      'gemini-x-lite:generateContent',
+    ])
+
+    // Still overloaded after every round: unavailable, after 3 rounds of 2 models.
+    const always = fakeFetch(...Array.from({ length: 6 }, () => status(503)))
+    const busy = createGeminiProvider({ apiKey: 'k', fetch: always.send, overloadRetryMs: [0, 0] })
+    expect((await failure(busy.cardText(card, signal))).kind).toBe('unavailable')
+    expect(always.calls).toHaveLength(6)
+  })
+
+  it('never waits for another round when the quota is spent', async () => {
+    const { calls, send } = fakeFetch(status(503), status(429))
+    const gemini = createGeminiProvider({ apiKey: 'k', fetch: send, overloadRetryMs: [0, 0] })
+    expect((await failure(gemini.cardText(card, signal))).kind).not.toBe('unavailable')
+    expect(calls).toHaveLength(2)
   })
 
   it('reports an exhausted free quota, or a per-minute limit', async () => {

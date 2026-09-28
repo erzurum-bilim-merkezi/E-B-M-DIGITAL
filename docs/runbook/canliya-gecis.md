@@ -128,6 +128,16 @@ Supabase → **Edge Functions → Secrets** (GitHub'a yazılmaz):
 Model adları sık değişir. AI Studio'daki listeyle karşılaştır; ad yanlışsa yapay zekâ
 "Hizmet şu anda yanıt vermiyor" der.
 
+**Canlıda kullanılan (28 Eylül 2026):** `GEMINI_MODEL` = `gemini-3.6-flash`,
+`GEMINI_MODEL_LIGHT` = `gemini-3.5-flash-lite`. En yeni modeller ücretsiz katmanda sık sık
+`HTTP 503 UNAVAILABLE` (aşırı yük) verdi.
+
+- Uygulama 503'te iki modeli 2 ve 5 saniye arayla iki kez daha dener.
+- Yine de sürerse **Edge Functions → ai-generate → Logs**'ta `Gemini …: HTTP …` satırına bak:
+  - `503`: Google tarafı yoğun. Beklemek ya da başka bir model gerekir.
+  - `404` / `403`: model bu anahtarla kullanılamıyor.
+  - `400`: anahtar geçersiz.
+
 ## 5. Veritabanı: migration'lar
 
 GitHub → **Actions → "DB migrate (live)" → Run workflow**

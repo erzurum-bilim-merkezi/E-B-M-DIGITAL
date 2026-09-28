@@ -579,6 +579,33 @@ export type GeminiConfig = {
   /** GEMINI_MODEL_LIGHT */
   lightModel?: string
   fetch?: typeof fetch
+  /** Pauses before another round when every model answered "overloaded" (503). */
+  overloadRetryMs?: readonly number[]
+}
+
+/**
+ * The free tier often answers 503 "overloaded" for a few seconds: two more rounds over the models,
+ * after 2 s and after 5 s, before giving up (a 429 quota or any other failure is never retried).
+ */
+export const GEMINI_OVERLOAD_RETRY_MS: readonly number[] = [2_000, 5_000]
+
+/** Resolves after `ms`, or at once when the request is cancelled or times out. */
+function pause(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true },
+    )
+  })
 }
 
 /** Stricter than Gemini's defaults: the audience is children. */
@@ -695,7 +722,7 @@ type Attempt =
       inputTokens: number | null
       outputTokens: number | null
     }
-  | { ok: false; error: AiProviderError; tryLighter: boolean }
+  | { ok: false; error: AiProviderError; tryLighter: boolean; overloaded?: boolean }
 
 export function createGeminiProvider(config: GeminiConfig): AiProvider {
   const send = config.fetch ?? fetch
@@ -743,6 +770,7 @@ export function createGeminiProvider(config: GeminiConfig): AiProvider {
         ok: false,
         error: new AiProviderError('unavailable', model),
         tryLighter: response.status === 503,
+        overloaded: response.status === 503,
       }
     }
     let payload: unknown
@@ -780,21 +808,32 @@ export function createGeminiProvider(config: GeminiConfig): AiProvider {
     read: (json: unknown) => T | null,
   ): Promise<Generated<T>> {
     let failure = new AiProviderError('unavailable', models[0] ?? GEMINI_DEFAULT_MODEL)
-    for (const model of models) {
-      // oxlint-disable-next-line no-await-in-loop -- the lighter model is only a fallback
-      const result = await attempt(model, prompt, schema, signal)
-      if (result.ok) {
-        const value = read(result.json)
-        if (value === null) throw new AiProviderError('invalid', result.model)
-        return {
-          value,
-          model: result.model,
-          inputTokens: result.inputTokens,
-          outputTokens: result.outputTokens,
-        }
+    for (const wait of [0, ...(config.overloadRetryMs ?? GEMINI_OVERLOAD_RETRY_MS)]) {
+      if (wait > 0) {
+        // oxlint-disable-next-line no-await-in-loop -- a round only follows a fully overloaded one
+        await pause(wait, signal)
+        if (signal.aborted) throw unanswered(signal, models[0] ?? GEMINI_DEFAULT_MODEL)
       }
-      failure = result.error
-      if (!result.tryLighter) break
+      let overloaded = false
+      for (const model of models) {
+        // oxlint-disable-next-line no-await-in-loop -- the lighter model is only a fallback
+        const result = await attempt(model, prompt, schema, signal)
+        if (result.ok) {
+          const value = read(result.json)
+          if (value === null) throw new AiProviderError('invalid', result.model)
+          return {
+            value,
+            model: result.model,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+          }
+        }
+        failure = result.error
+        overloaded = result.overloaded === true
+        if (!result.tryLighter) break
+      }
+      // Another round only when the last model tried was overloaded, not out of quota.
+      if (!overloaded) break
     }
     throw failure
   }

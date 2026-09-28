@@ -265,6 +265,9 @@ begin
   values ('register', v_device::text, date_trunc('hour', now()), 1)
   on conflict (bucket, subject, window_start)
   do update set count = public.rate_limit_counters.count + 1;
+  -- And per address and day: a busy centre, not a script behind one IP.
+  perform private.spend_budget('register-ip-day', private.client_ip(), date_trunc('day', now()),
+    1, 500, 'Bu ağdan bugün çok fazla yeni kâşif oluşturuldu. Yarın tekrar deneyin.');
 
   insert into public.explorers (nickname, avatar, display_code, created_via)
   values (

@@ -151,6 +151,12 @@ begin
   values ('events', v_device::text, v_window, v_count)
   on conflict (bucket, subject, window_start)
   do update set count = public.rate_limit_counters.count + excluded.count;
+  -- Budgets per device and hour, and per address and day (every device behind one IP, such as a
+  -- centre's Wi-Fi): a kit is about 50 events, a script cannot fill the Free-plan database.
+  perform private.spend_budget('events-hour', v_device::text, date_trunc('hour', now()), v_count,
+    1500, 'Bu cihazdan çok fazla etkinlik gönderildi. Biraz sonra tekrar deneyin.');
+  perform private.spend_budget('events-ip-day', private.client_ip(), date_trunc('day', now()),
+    v_count, 50000, 'Bu ağdan bugün çok fazla etkinlik gönderildi. Yarın tekrar deneyin.');
 
   for v_event in select value from jsonb_array_elements(p_events) loop
     if exists (

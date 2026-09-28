@@ -713,7 +713,9 @@ as $$
 begin
   if new.encrypted_password is distinct from old.encrypted_password
     and exists (select 1 from public.profiles p where p.id = new.id) then
-    perform private.audit('auth.password_set', 'staff_user', new.id::text, '{}', new.id);
+    -- GoTrue's own connection carries no caller: the account is the subject, the actor unknown
+    -- (an admin's reset is recorded by admin-users with the admin as actor).
+    perform private.audit('auth.password_set', 'staff_user', new.id::text, '{}', null);
   end if;
   return new;
 end;
@@ -739,7 +741,7 @@ begin
         when tg_op = 'DELETE' then 'auth.mfa_factor_removed'
         else 'auth.mfa_factor_' || new.status::text
       end,
-      'staff_user', v_user::text, '{}', v_user
+      'staff_user', v_user::text, '{}', null -- actor unknown, as for passwords
     );
   end if;
   return coalesce(new, old);

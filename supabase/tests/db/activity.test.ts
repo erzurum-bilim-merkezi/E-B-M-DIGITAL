@@ -57,6 +57,10 @@ function event(
 const complete = (explorerId: string, stepId: string) =>
   event(explorerId, 'card_complete', { durationMs: 1000, attempts: 1 }, { stepId })
 
+/** Ten card openings of one member. */
+const opens = (explorerId: string) =>
+  Array.from({ length: 10 }, () => event(explorerId, 'card_open', {}))
+
 async function send(device: Actor, events: object[]) {
   return db().as(device).rpc<SendResult>('record_events', { p_events: events })
 }
@@ -159,6 +163,37 @@ describe('record_events', () => {
       Array.from({ length: 20 }, () => event(id, 'card_open', {})),
     )
     expect((await dbError(send(device, [event(id, 'card_open', {})]))).code).toBe(KS.rate_limited)
+  })
+
+  it('keeps an hourly budget per device and a daily one per address', async () => {
+    const tablet = await db().createDevice()
+    const onTablet = await member(tablet)
+    // A heavy hour is already behind this tablet: the next batch would go past it.
+    await db().sql(
+      `insert into public.rate_limit_counters (bucket, subject, window_start, count)
+       values ('events-hour', $1, date_trunc('hour', now()), 1495)`,
+      [tablet.id],
+    )
+    expect((await dbError(send(tablet, opens(onTablet)))).code).toBe(KS.rate_limited)
+    expect(await db().sql('select count(*)::int as n from public.explorer_events')).toEqual([
+      { n: 0 },
+    ])
+
+    const address = '203.0.113.7'
+    const phone = await db().createDevice()
+    const onPhone = await member(phone)
+    await db().sql(
+      `insert into public.rate_limit_counters (bucket, subject, window_start, count)
+       values ('events-ip-day', $1, date_trunc('day', now()), 49995)`,
+      [address],
+    )
+    const sendFrom = (ip: string) =>
+      db()
+        .as(phone, { ip })
+        .rpc<SendResult>('record_events', { p_events: opens(onPhone) })
+    expect((await dbError(sendFrom(address))).code).toBe(KS.rate_limited)
+    // The same phone on another network plays on.
+    expect((await sendFrom('198.51.100.4')).accepted).toBe(10)
   })
 
   it('awards quiz-master for five different correctly answered questions', async () => {

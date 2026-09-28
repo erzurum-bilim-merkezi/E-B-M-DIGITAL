@@ -524,12 +524,14 @@ describe('changes made straight through Supabase Auth', () => {
     await db().sql(`update auth.mfa_factors set status = 'verified' where user_id = $1`, [
       editor.id,
     ])
-    const actions = await db().sql<{ action: string }>(
-      'select action from public.audit_log where entity_id = $1 order by at, action',
+    const actions = await db().sql<{ action: string; actor_id: string | null }>(
+      'select action, actor_id from public.audit_log where entity_id = $1 order by at, action',
       [editor.id],
     )
     expect(actions.map((row) => row.action).toSorted()).toEqual(
       ['auth.mfa_factor_added', 'auth.mfa_factor_verified', 'auth.password_set'].toSorted(),
     )
+    // Who made the change is unknown at this level (it may be an admin's reset).
+    expect(actions.every((row) => row.actor_id === null)).toBe(true)
   })
 })

@@ -52,6 +52,8 @@ function optimisticProgress(explorerId: string, events: readonly ActivityEvent[]
     ) {
       current.completedSteps = [...current.completedSteps, event.stepId]
     }
+    // The server adds every completion's time, like here.
+    if (event.type === 'card_complete') current.totalDurationMs += event.data.durationMs
     if (event.type === 'kit_complete' && current.completedAt === null)
       current.completedAt = event.occurredAt
     if (event.type === 'qr_scan') current.qrScans += 1
@@ -69,7 +71,17 @@ function withEvents(
   const byKit = new Map(rows.map((row) => [row.kitId, row]))
   for (const [kitId, local] of optimisticProgress(explorerId, pendingEvents(events, explorerId))) {
     const server = byKit.get(kitId)
-    byKit.set(kitId, server ? mergeProgress(server, local) : local)
+    // Events the server has not counted yet add to its sums (time, scans).
+    byKit.set(
+      kitId,
+      server
+        ? {
+            ...mergeProgress(server, local),
+            qrScans: server.qrScans + local.qrScans,
+            totalDurationMs: server.totalDurationMs + local.totalDurationMs,
+          }
+        : local,
+    )
   }
   return byKit
 }

@@ -55,6 +55,27 @@ describe('useKitCompletion', () => {
     })
   })
 
+  it('counts the time of the card that finished the kit, still unsent', async () => {
+    const steps = KUCUK_CIFTCILER.steps.map((step) => step.id)
+    const last = steps.at(-1) ?? ''
+    const { result } = renderCompletion(finished({ completedSteps: steps.slice(0, -1) }))
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(queuedCompletions()).toEqual([])
+
+    act(() =>
+      track({
+        type: 'card_complete',
+        explorerId: EXPLORER_ID,
+        kitId: KUCUK_CIFTCILER.id,
+        stepId: last,
+        data: { durationMs: 5_000, attempts: 1 },
+      }),
+    )
+
+    await waitFor(() => expect(queuedCompletions()).toHaveLength(1))
+    expect(queuedCompletions()[0]?.data).toEqual({ durationMs: 95_000 })
+  })
+
   it('reports a kit played over several days at the longest time an event may carry', async () => {
     renderCompletion(finished({ totalDurationMs: 3 * DAY_MS }))
     // Beyond the cap the event would fail validation and the kit would never count as done.

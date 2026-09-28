@@ -2,6 +2,10 @@ import { AppError, isAppError } from '@/shared/api/errors'
 
 import { isAlreadyExists, isRangeNotSatisfiable, toAppError, unwrap, unwrapResult } from './errors'
 
+/** An error of Supabase Auth with the given status and error code. */
+const auth = (status: number, code?: string) =>
+  toAppError({ __isAuthError: true, name: 'AuthApiError', status, code })
+
 describe('toAppError', () => {
   it('turns RPC errors (SQLSTATE KSxxx) into AppErrors with their message and details', () => {
     const error = toAppError({
@@ -51,8 +55,6 @@ describe('toAppError', () => {
   })
 
   it('names password problems only for what they are', () => {
-    const auth = (status: number, code?: string) =>
-      toAppError({ __isAuthError: true, name: 'AuthApiError', status, code })
     expect(auth(422, 'weak_password').message).toBe('Parola yeterince güçlü değil.')
     expect(auth(422, 'same_password').message).toBe('Yeni parola eskisinden farklı olmalı.')
     // A stored session the server no longer knows is no wrong password.

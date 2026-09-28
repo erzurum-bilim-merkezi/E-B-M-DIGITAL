@@ -119,10 +119,11 @@ export default defineConfig(({ mode }) => {
       comingSoonDocument(appEnv.VITE_COMING_SOON),
       // The Supabase project is the only backend origin (CSP_BACKEND_ORIGIN overrides it).
       contentSecurityPolicy(
-        process.env['CSP_BACKEND_ORIGIN'] ||
-          (appEnv.VITE_BACKEND === 'supabase' && appEnv.VITE_SUPABASE_URL
+        process.env['CSP_BACKEND_ORIGIN']
+          ? new URL(process.env['CSP_BACKEND_ORIGIN']).origin
+          : appEnv.VITE_BACKEND === 'supabase' && appEnv.VITE_SUPABASE_URL
             ? new URL(appEnv.VITE_SUPABASE_URL).origin
-            : null),
+            : null,
       ),
       VitePWA({
         registerType: 'autoUpdate',
@@ -230,6 +231,8 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
+      // Editor and form tests type key by key; on a busy machine they pass 5 s without hanging.
+      testTimeout: 10_000,
       // Supabase adapters are unit-tested against MSW at the local-stack address (never the live
       // project). VITE_BACKEND stays "mock": the app under test runs on the mock backend.
       env: {

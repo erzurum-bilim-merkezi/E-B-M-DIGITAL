@@ -62,6 +62,16 @@ describe('backend selection', () => {
     expect(parsed.VITE_SUPABASE_URL).toBe('https://abcd.supabase.co')
   })
 
+  it('refuses a project URL with a path', () => {
+    expect(() =>
+      parseEnv({
+        VITE_BACKEND: 'supabase',
+        VITE_SUPABASE_URL: 'https://abcd.supabase.co/rest/v1',
+        VITE_SUPABASE_PUBLISHABLE_KEY: PUBLISHABLE,
+      }),
+    ).toThrow(/project address only/)
+  })
+
   it('accepts the legacy anon key of the local stack', () => {
     const key = jwt({ iss: 'supabase-demo', role: 'anon' })
     expect(parseEnv({ VITE_SUPABASE_PUBLISHABLE_KEY: key }).VITE_SUPABASE_PUBLISHABLE_KEY).toBe(key)

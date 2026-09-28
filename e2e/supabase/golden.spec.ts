@@ -62,6 +62,22 @@ test('Supabase: Studio → publish → kit QR → phone → Studio sees it → r
   await studio.page.getByRole('button', { name: 'Yayınla', exact: true }).click()
   await expect(studio.page.getByText('v1 yayınlandı')).toBeVisible({ timeout: 30_000 })
 
+  // The kit list searches with Turkish letter case through PostgREST (kit_search): the
+  // upper-case "BAHÇE" finds "Supabase Bahçesi", and "BAHCE" (no ç) does not.
+  await studio.page.goto('studio/kitler?q=BAHÇE')
+  await expect(studio.page.getByRole('link', { name: /Supabase Bahçesi/ }).first()).toBeVisible()
+  await studio.page.goto('studio/kitler?q=BAHCE')
+  // Loaded and empty (not merely still loading); a failed query would say "yüklenemedi".
+  await expect(studio.page.getByText('Eşleşen kit yok')).toBeVisible()
+  await studio.page.goto('studio/kitler?q=Supabase')
+  await studio.page
+    .getByRole('link', { name: /Supabase Bahçesi/ })
+    .first()
+    .click()
+  await expect(
+    studio.page.getByRole('heading', { level: 1, name: 'Supabase Bahçesi' }),
+  ).toBeVisible()
+
   // 2 · The kit's single QR (a new kit is "Bir QR yeter").
   await studio.page.getByRole('link', { name: /QR/ }).first().click()
   const download = studio.page.waitForEvent('download')
@@ -94,6 +110,20 @@ test('Supabase: Studio → publish → kit QR → phone → Studio sees it → r
   await expect(tablet.page.getByRole('heading', { level: 1, name: 'Merhaba Kaan!' })).toBeVisible()
   await tablet.page.getByRole('link', { name: /Supabase Bahçesi/ }).click()
   await expect(tablet.page.getByText(/1 \/ 7 kart tamamlandı/)).toBeVisible()
+
+  // 6 · An admin adds a Studio user: the admin-users Edge Function (caller JWT, project keys,
+  // CORS, Supabase Auth admin API, staff_register) end to end.
+  await studio.page.goto('studio/kullanicilar')
+  await expect(studio.page.getByRole('table', { name: 'Studio kullanıcıları' })).toBeVisible()
+  await studio.page.getByRole('button', { name: 'Kullanıcı ekle' }).click()
+  const form = studio.page.getByRole('dialog', { name: 'Kullanıcı ekle' })
+  await form.getByRole('textbox', { name: 'Ad soyad' }).fill('Yeni Editör')
+  await form.getByRole('textbox', { name: 'E-posta' }).fill('yeni.editor@kasif.test')
+  await form.getByRole('button', { name: 'Kullanıcıyı oluştur' }).click()
+  const temporary = studio.page.getByRole('dialog', { name: 'Geçici parola' })
+  await expect(temporary).toBeVisible({ timeout: 20_000 })
+  await temporary.getByRole('button', { name: 'Kaydettim, kapat' }).click()
+  await expect(studio.page.getByText('yeni.editor@kasif.test')).toBeVisible()
 
   await Promise.all([studio.context.close(), phone.context.close(), tablet.context.close()])
 })

@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { RefreshCw, ShieldAlert, Sparkles, Square, WandSparkles } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 
 import { aiSceneStatesFor, BLOCK_CATALOG, type AiField, type Step } from '@/entities/kit'
 import { errorMessage, isAppError } from '@/shared/api/errors'
@@ -549,18 +549,24 @@ export function AiKitDraftForm({
     onSuccess: onDrafted,
     onSettled: () => void refreshQuota(),
   })
+  const start = () => {
+    if (request.topic.trim() && !draft.isPending) draft.mutate()
+  }
+  // Enter in a field starts the draft, never the wizard's own "Devam" around this panel.
+  const startOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    start()
+  }
+  // Not a <form>: the panel sits inside the kit wizard's form. A nested form is invalid HTML, and
+  // its submit also reached the wizard, which then said "Önce yapay zekâ taslağını oluşturun".
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (request.topic.trim()) draft.mutate()
-      }}
-      className="flex flex-col gap-4"
-    >
+    <div className="flex flex-col gap-4">
       <Field label="Konu" description="ör. “8 yaş için fotosentez”. Kişisel veri yazmayın.">
         <Input
           value={request.topic}
           maxLength={120}
+          onKeyDown={startOnEnter}
           onChange={(event) => setRequest({ ...request, topic: event.target.value })}
         />
       </Field>
@@ -571,6 +577,7 @@ export function AiKitDraftForm({
             min={3}
             max={14}
             value={request.ageMin}
+            onKeyDown={startOnEnter}
             onChange={(event) =>
               setRequest({
                 ...request,
@@ -585,6 +592,7 @@ export function AiKitDraftForm({
             min={3}
             max={14}
             value={request.ageMax}
+            onKeyDown={startOnEnter}
             onChange={(event) =>
               setRequest({
                 ...request,
@@ -599,6 +607,7 @@ export function AiKitDraftForm({
             min={2}
             max={12}
             value={request.cardCount}
+            onKeyDown={startOnEnter}
             onChange={(event) =>
               setRequest({
                 ...request,
@@ -610,7 +619,8 @@ export function AiKitDraftForm({
       </div>
       <QuotaLine />
       <Button
-        type="submit"
+        type="button"
+        onClick={start}
         className="self-start"
         loading={draft.isPending}
         disabled={!request.topic.trim()}
@@ -619,6 +629,6 @@ export function AiKitDraftForm({
         Taslak oluştur
       </Button>
       {draft.isError && <AiError error={draft.error} onRetry={() => draft.mutate()} />}
-    </form>
+    </div>
   )
 }

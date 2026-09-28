@@ -14,3 +14,4 @@ export {
 } from './client'
 export { isAlreadyExists, isRangeNotSatisfiable, toAppError, unwrap, unwrapResult } from './errors'
 export { readAll } from './read-all'
+export { searchTerm } from './search'

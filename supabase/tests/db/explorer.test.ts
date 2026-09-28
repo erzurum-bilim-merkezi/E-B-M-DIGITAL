@@ -50,6 +50,23 @@ async function centerDevice({
 }
 
 describe('register_explorer', () => {
+  it('allows a day of new members per address, as busy as a centre gets', async () => {
+    const address = '203.0.113.9'
+    await db().sql(
+      `insert into public.rate_limit_counters (bucket, subject, window_start, count)
+       values ('register-ip-day', $1, date_trunc('day', now()), 500)`,
+      [address],
+    )
+    const device = await db().createDevice()
+    const join = (ip: string) =>
+      db().as(device, { ip }).rpc('register_explorer', { p_nickname: 'Deniz', p_avatar: 'sun' })
+    expect((await dbError(join(address))).code).toBe(KS.rate_limited)
+    expect(await linkedIds(device)).toEqual([])
+    // Another network is another budget.
+    await join('198.51.100.8')
+    expect(await linkedIds(device)).toHaveLength(1)
+  })
+
   it('creates a member linked to the device and returns its Kâşif kodu once', async () => {
     const device = await db().createDevice()
     const { explorer, restoreCode } = await register(device, 'ayşe  nur')

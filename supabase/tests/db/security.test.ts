@@ -118,6 +118,15 @@ describe('security model', () => {
     expect(all.map((row) => row.id).toSorted()).toEqual([editor.id, other.id, admin.id].toSorted())
   })
 
+  it('never lets anyone read the hash of a temporary password', async () => {
+    const admin = await db().createStaff({ role: 'admin' })
+    const error = await dbError(
+      db().as(admin).sql('select temp_password_hash from public.profiles'),
+    )
+    expect(error.code).toBe('42501')
+    expect(await db().as(admin).sql('select email, role from public.profiles')).toHaveLength(1)
+  })
+
   it('answers the keep-alive ping without a session', async () => {
     expect(await db().as({ kind: 'anon' }).rpc('ping')).toBe('pong')
   })

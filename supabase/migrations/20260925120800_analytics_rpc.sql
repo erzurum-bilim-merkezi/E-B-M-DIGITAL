@@ -47,17 +47,6 @@ as $$
   select btrim(p_text, E' \t\n\r\f\u000b ﻿                　')
 $$;
 
--- toLocaleLowerCase('tr') for the letters of nicknames and display codes (entities/explorer):
--- I → ı and İ → i, and the Turkish capitals mapped explicitly so no database locale matters.
-create function private.tr_lower(p_text text)
-returns text
-language sql
-immutable
-set search_path = ''
-as $$
-  select lower(translate(p_text, 'IİÇĞÖŞÜÂÎÛ', 'ıiçğöşüâîû'))
-$$;
-
 -- Name and emoji of the global badges (GLOBAL_BADGES in entities/explorer); null for others.
 create function private.global_badge(p_badge_id text)
 returns jsonb

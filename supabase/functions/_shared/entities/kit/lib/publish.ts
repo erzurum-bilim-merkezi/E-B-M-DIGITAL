@@ -7,6 +7,12 @@ import type { KitVersion, QrCodeRow, StudioKit } from '../model/studio.ts'
 export const MIN_APP_VERSION = 1
 
 /** The newest finalized version of a kit (any row shape that carries the version fields). */
+/** What the public indexes need of a kit (never its draft: a broken draft cannot stop them). */
+export type KitIndexEntry = Pick<
+  StudioKit,
+  'id' | 'slug' | 'status' | 'visibility' | 'publishedVersion'
+>
+
 export function latestVersionOf<T extends Pick<KitVersion, 'kitId' | 'version' | 'finalizedAt'>>(
   kitId: string,
   versions: readonly T[],
@@ -44,7 +50,7 @@ export function toCatalogEntry(document: KitDocument, publishedAt: string): Cata
  * (never patched), so concurrent publishes cannot lose each other's kits.
  */
 export function buildCatalog(
-  kits: readonly StudioKit[],
+  kits: readonly KitIndexEntry[],
   versions: readonly KitVersion[],
   generation: number,
   now: string,
@@ -66,7 +72,7 @@ export function buildCatalog(
  * Unlisted kits are included — a printed QR must keep working even when not in the catalog.
  */
 export function buildQrIndex(
-  kits: readonly StudioKit[],
+  kits: readonly KitIndexEntry[],
   versions: readonly KitVersion[],
   qrRows: readonly QrCodeRow[],
   now: string,

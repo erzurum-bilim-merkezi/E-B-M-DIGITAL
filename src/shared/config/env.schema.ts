@@ -42,7 +42,12 @@ const envShape = z.object({
   /** Supabase project URL, e.g. `https://abcd.supabase.co` (local stack: `http://127.0.0.1:54321`). */
   VITE_SUPABASE_URL: z
     .url({ protocol: /^https?$/ })
-    .transform((url) => url.replace(/\/+$/, ''))
+    // The project address only: a path (e.g. /rest/v1) would break the client and narrow the CSP.
+    .refine((url) => {
+      const parsed = new URL(url)
+      return parsed.pathname === '/' && !parsed.search && !parsed.hash
+    }, 'Use the project address only, e.g. https://abcd.supabase.co')
+    .transform((url) => new URL(url).origin)
     .optional(),
   /**
    * The publishable (or legacy anon) key. Public by design — row level security protects the

@@ -111,6 +111,8 @@ function roleOf(actor: Actor) {
       : 'authenticated'
 }
 
+type CallOptions = { storageApi?: boolean; ip?: string }
+
 export type TestDb = Awaited<ReturnType<typeof createTestDb>>
 
 export async function createTestDb() {
@@ -118,8 +120,17 @@ export async function createTestDb() {
   const { query, close } = url ? await openPostgres(url) : await openPglite()
   let savepoint = 0
 
-  /** Runs `text` as `actor` (role + JWT claims), isolated in a savepoint. */
-  async function run(actor: Actor, text: string, params: readonly unknown[] = []) {
+  /**
+   * Runs `text` as `actor` (role + JWT claims), isolated in a savepoint. `storageApi` runs it the
+   * way the Storage API deletes: real Supabase refuses a plain DELETE on storage tables unless
+   * `storage.allow_delete_query` is on, and the policies still decide what goes.
+   */
+  async function run(
+    actor: Actor,
+    text: string,
+    params: readonly unknown[] = [],
+    { storageApi = false, ip }: CallOptions = {},
+  ) {
     const name = `call_${++savepoint}`
     await query(`savepoint ${name}`)
     try {
@@ -127,7 +138,13 @@ export async function createTestDb() {
       await query(`select set_config('request.jwt.claims', $1, true)`, [
         JSON.stringify(claimsOf(actor)),
       ])
+      // The address Cloudflare states for hosted projects (private.client_ip); none by default.
+      await query(`select set_config('request.headers', $1, true)`, [
+        JSON.stringify(ip ? { 'cf-connecting-ip': ip } : {}),
+      ])
+      if (storageApi) await query(`select set_config('storage.allow_delete_query', 'true', true)`)
       const rows = await query(text, params)
+      if (storageApi) await query(`select set_config('storage.allow_delete_query', 'false', true)`)
       await query('reset role')
       await query(`release savepoint ${name}`)
       return rows
@@ -147,10 +164,13 @@ export async function createTestDb() {
         throw toDbError(error)
       }
     },
-    as(actor: Actor) {
+    as(actor: Actor, { ip }: Pick<CallOptions, 'ip'> = {}) {
       return {
         sql: async <T extends Row = Row>(text: string, params: readonly unknown[] = []) =>
-          (await run(actor, text, params)) as T[],
+          (await run(actor, text, params, { ip })) as T[],
+        /** A statement sent the way the Storage API sends it (see `run`). */
+        storageApi: async <T extends Row = Row>(text: string, params: readonly unknown[] = []) =>
+          (await run(actor, text, params, { storageApi: true, ip })) as T[],
         /** Calls `public.<name>` with named arguments and returns its result. */
         rpc: async <T = unknown>(name: string, args: Record<string, unknown> = {}) => {
           const keys = Object.keys(args)
@@ -164,7 +184,9 @@ export async function createTestDb() {
               (!Array.isArray(value) || value.some((item) => typeof item === 'object'))
             return isJson ? JSON.stringify(value) : value
           })
-          const [row] = await run(actor, `select public.${name}(${list}) as result`, values)
+          const [row] = await run(actor, `select public.${name}(${list}) as result`, values, {
+            ip,
+          })
           return row?.['result'] as T
         },
       }

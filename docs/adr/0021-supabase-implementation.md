@@ -47,20 +47,44 @@ test edilmiş davranışı** esas alındı; plandan ayrılan kararlar burada kay
   sınırlarıyla sınırlanır; admin için TOTP zorunludur. Mevcut parola kontrolü ve Kâşif kodu ise
   kendi 5 hata / 15 dakika kilidini uygular (IP başına ek sınır).
 - **Yapay zekâ çizimleri ayrı `ai` bucket'ındadır:**
-  - Yalnızca `ai-generate` fonksiyonu servis rolüyle yazar. Personel kendi SVG'sini hiçbir
-    bucket'a yükleyemez (`media` SVG kabul etmez).
+  - Yalnızca `ai-generate` fonksiyonu servis rolüyle yazar. Personel Storage'a doğrudan SVG
+    yükleyemez (`media` SVG kabul etmez).
+  - Studio'nun kaydettiği çizim (`save-scene`, `save-icon`) istemciden gelir. Bu yüzden fonksiyon
+    onu depolamadan önce `checkAiSvg` ve iyi biçimlilik denetiminden geçirir.
   - Dosya yolları `scenes/<grup>/<durum>.svg` ve `icons/<id>.svg` biçimindedir.
   - `checkAiSvg` bir izin listesidir: yalnızca çizim öğeleri ve öznitelikleri kabul edilir.
     Ad alanı öneki, `xmlns:` bildirimi, DOCTYPE/ENTITY/CDATA ve dış bağlantı reddedilir. SVG
     doğrudan açılsa bile betik çalışamaz.
   - Kota, sağlayıcı çağrılmadan önce veritabanında tek adımda ayrılır (`ai_reserve`). Paralel
     istekler günlük sınırı aşamaz.
+- **Yazma bütçeleri (Free plan veritabanı dolmasın):**
+  - Etkinlikler: cihaz başına dakikada 120 ve saatte 1 500, ağ (IP) başına günde 50 000.
+  - Yeni kâşif: cihaz başına saatte 30, ağ başına günde 500.
+  - Yalnızca kaydedilen etkinlikler sayılır; tekrarlar ve reddedilenler bütçe harcamaz.
+  - Personelin etkinleştirdiği merkez tabletleri ağ bütçesine tabi değildir. Böylece merkezin
+    Wi-Fi'ındaki biri bütçeyi harcayıp tabletleri durduramaz.
+  - IP, Cloudflare'in `cf-connecting-ip` başlığından okunur; istemci bunu değiştiremez. IPv6'da
+    /64 ağı tek adres sayılır.
+  - Aşan istek `rate_limited` alır ve paket geri alınır; Kâşif uygulaması olayları kuyrukta
+    tutar, sonra yeniden gönderir. Kuyruk 500'ü aşarsa önce ilerleme dışındaki olaylar düşer.
+  - Kalan risk: merkezin ağındaki biri, kişisel telefonların ağ bütçesini bir gün için
+    harcayabilir. Tabletler etkilenmez.
+- **Haftalık yedek:** Veritabanı ve `media`/`ai` dosyaları her hafta `age` ile şifrelenip 90 gün
+  saklanır ("Weekly backup (live)", ortam `backup`). `published` bucket'ı veritabanından yeniden
+  üretilir.
 - **Arşivlenen kit adresinden açılmaz:** Yeniden üretim, arşivdeki kitin `latest.json` dosyasını
   siler; kit kataloğa ve QR dizinine "arşivde" olarak düşer. Değişmez `v<n>.json` dosyaları
   kalır. Adresleri tahmin edilebilir, ama hiçbir yerden bu dosyalara bağlantı verilmez.
 - **Oturum anahtarları** `kasif:sb-auth:staff` ve `kasif:sb-auth:kid`'dir. Mock'un
   `kasif:auth:*` değerleri, mock sürümü çalıştırmış bir tablette supabase-js'e oturum diye
   verilmez.
+- **Kâşif çevrimdışı da açılır:**
+  - Kişisel cihazda üyeler, ilerleme ve rozetler `localStorage`'da saklanır
+    (`kasif:kids-queries`). Anlık görüntü her derlemede geçersizleşir ve 30 günden eskisi silinir.
+  - Merkez tabletinde ve Studio verisinde hiçbir şey saklanmaz. Kit dosyaları service worker
+    önbelleğinden gelir.
+  - Süresi dolmuş ama çevrimdışı yenilenemeyen cihaz oturumu "oturum yok" sayılmaz, ağ hatası
+    sayılır. Ekrandaki üyeler ve ilerleme kalır, yeni bir anonim cihaz açılmaz.
 - **Supabase Auth üzerinden yapılan doğrudan değişiklikler de kayda geçer:** Parola değişimi ve
   doğrulayıcı ekleme/silme `audit_log`'a yazılır. Bir hesapta en fazla 2 doğrulayıcı olabilir.
 - **Bilinerek kabul edilen riskler (v2'de ele alınır):**
@@ -80,6 +104,12 @@ test edilmiş davranışı** esas alındı; plandan ayrılan kararlar burada kay
     alınan hesap bundan etkilenmez: her istekte `is_active_staff` denetlenir.
   - Depo herkese açık olduğu için Actions log'ları da açıktır. Canlı workflow'lara girilen
     e-posta ve ad, ilk adımda maskelenir; log'da `***` görünür.
+- **Bilinerek kabul edilen risk: açık oturumla parola değişimi.** Açık bir Studio sekmesine
+  erişen biri, mevcut parolayı bilmeden Supabase Auth API'siyle parolayı değiştirebilir.
+  "Secure password change" bunu yalnızca girişten 24 saat sonra engeller ve Studio yeniden
+  kimlik doğrulamayı desteklemez; bu yüzden kapalıdır. Oturumlar sekmeye bağlıdır, erişim jetonu
+  30 dakikadır, admin için 2FA zorunludur. Parola değişimi `audit_log`'a düşer. Personel
+  bilgisayarı kilitlemelidir.
 - **Test yapısı:**
   - DB testleri PGlite'ta (Docker'sız) ve CI'da gerçek yerel yığında aynı paketle koşar.
   - Adapter'lar MSW ile birim testlidir.

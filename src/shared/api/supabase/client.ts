@@ -1,6 +1,8 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient, isAuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js'
 
 import { env } from '@/shared/config/env'
+
+import { toAppError } from './errors'
 
 /*
  * Supabase clients (ADR 0011, 0015). Two sessions that never mix:
@@ -82,8 +84,11 @@ let deviceSession: Promise<string> | undefined
 export function ensureDeviceSession(): Promise<string> {
   deviceSession ??= (async () => {
     const client = kidsClient()
-    const { data } = await client.auth.getSession()
+    const { data, error: sessionError } = await client.auth.getSession()
     if (data.session) return data.session.user.id
+    // A session that only could not be refreshed right now is never replaced by a new device:
+    // the members are linked to it.
+    if (sessionError && isAuthRetryableFetchError(sessionError)) throw toAppError(sessionError)
     const { data: created, error } = await client.auth.signInAnonymously()
     if (error || !created.user) throw error ?? new Error('Anonymous sign-in returned no user')
     return created.user.id
@@ -95,10 +100,17 @@ export function ensureDeviceSession(): Promise<string> {
   return deviceSession
 }
 
-/** The device session if one exists, without creating it. */
+/**
+ * The device session if one exists, without creating it. `null` only when this device has no
+ * session (never joined, or the server revoked it). A stored session that cannot be refreshed
+ * right now (offline once the access token expired, server unreachable) is a network failure:
+ * the caller keeps the members and progress it already shows instead of reporting none.
+ */
 export async function currentDeviceId() {
-  const { data } = await kidsClient().auth.getSession()
-  return data.session?.user.id ?? null
+  const { data, error } = await kidsClient().auth.getSession()
+  if (data.session) return data.session.user.id
+  if (error && isAuthRetryableFetchError(error)) throw toAppError(error)
+  return null
 }
 
 /** Test-only: forget cached clients (a test may change the session storage). */

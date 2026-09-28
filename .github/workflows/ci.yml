@@ -137,7 +137,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-supabase
-          path: playwright-report
+          # The HTML report and the raw results (screenshots, traces, error-context.md).
+          path: |
+            playwright-report
+            test-results
           retention-days: 7
       - name: Edge Function logs
         if: failure()

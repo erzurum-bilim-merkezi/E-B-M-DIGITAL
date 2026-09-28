@@ -118,9 +118,9 @@ declare
   v_accepted integer := 0;
   v_duplicates integer := 0;
   v_rejected integer := 0;
-  v_new_badges jsonb := '[]';
+  v_new_badges jsonb := '[]'::jsonb;
   v_badge public.explorer_badges;
-  v_touched jsonb := '{}';
+  v_touched jsonb := '{}'::jsonb;
   v_counters record;
   v_earned text[];
   v_global text;
@@ -225,6 +225,20 @@ begin
       jsonb_build_object('at', v_at, 'preview', (v_event ->> 'isPreview')::boolean)
     );
   end loop;
+
+  -- Budgets for what was stored (never duplicates or refused events): per device and hour, and
+  -- per address and day, shared by every device behind one IP. Staff-activated centre tablets
+  -- skip the address budget, so no one on the centre's network can spend it for them. A kit is
+  -- about 50 events: a script cannot fill the Free-plan database. Past a budget the whole batch
+  -- rolls back and the app sends it again later.
+  if v_accepted > 0 then
+    perform private.spend_budget('events-hour', v_device::text, date_trunc('hour', now()),
+      v_accepted, 1500, 'Bu cihazdan çok fazla etkinlik gönderildi. Biraz sonra tekrar deneyin.');
+    if not private.is_center_device(v_device) then
+      perform private.spend_budget('events-ip-day', private.client_ip(), date_trunc('day', now()),
+        v_accepted, 50000, 'Bu ağdan bugün çok fazla etkinlik gönderildi. Yarın tekrar deneyin.');
+    end if;
+  end if;
 
   -- Global badges and last-seen of every member that got new events.
   for v_explorer, v_at, v_preview in

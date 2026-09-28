@@ -127,10 +127,10 @@ describe('Supabase media repository', () => {
   it('lists and searches assets with public URLs', async () => {
     const id = '6f1c2d4e-8a9b-4c3d-9e2f-1a2b3c4d5e6f'
     const queries = table('media_assets', [row(id)])
-    const [asset] = await media.list({ kind: 'image', query: 'tohum' })
+    const [asset] = await media.list({ kind: 'image', query: 'TOHUM' })
     expect(asset?.url).toContain(`/public/media/uploads/${id}.webp`)
     expect(queries[0]?.get('kind')).toBe('eq.image')
-    expect(queries[0]?.get('or')).toBe('(name.ilike.*tohum*,alt.ilike.*tohum*)')
+    expect(queries[0]?.get('media_search')).toBe('like.*tohum*')
     // Paged past the server's row cap in a stable order: newest first, id breaks ties.
     expect(queries[0]?.get('order')).toBe('created_at.desc,id.asc')
     expect(queries[0]?.get('limit')).toBe('1000')

@@ -6,6 +6,7 @@ import {
   failures,
   fromRpcError,
 } from '../../functions/_shared/http.ts'
+import { projectKeys } from '../../functions/_shared/keys.ts'
 import { generateTempPassword } from '../../functions/_shared/temp-password.ts'
 
 describe('CORS of the Edge Functions', () => {
@@ -61,5 +62,44 @@ describe('temporary passwords', () => {
       expect(password).toMatch(/^Gecici-[A-Z2-9]{4}-[A-Z2-9]{4}7$/)
       expect(checkPassword(password)).toBeNull()
     }
+  })
+})
+
+/** An environment made of the given values. */
+const from = (values: Record<string, string>) => (name: string) => values[name]
+
+describe('API keys of the Edge Functions', () => {
+  it('prefers the named keys hosted projects provide', () => {
+    const keys = projectKeys(
+      from({
+        SUPABASE_PUBLISHABLE_KEYS: '{"web":"sb_publishable_web","default":"sb_publishable_def"}',
+        SUPABASE_SECRET_KEYS: '{"default":"sb_secret_def"}',
+        SUPABASE_ANON_KEY: 'legacy-anon',
+        SUPABASE_SERVICE_ROLE_KEY: 'legacy-service',
+      }),
+    )
+    expect(keys).toEqual({ publishable: 'sb_publishable_def', secret: 'sb_secret_def' })
+  })
+
+  it('falls back to the single keys, then to the legacy ones', () => {
+    expect(
+      projectKeys(from({ SUPABASE_PUBLISHABLE_KEY: 'sb_p', SUPABASE_SECRET_KEY: 'sb_s' })),
+    ).toEqual({ publishable: 'sb_p', secret: 'sb_s' })
+    expect(
+      projectKeys(
+        from({
+          SUPABASE_PUBLISHABLE_KEYS: 'not json',
+          SUPABASE_ANON_KEY: 'legacy-anon',
+          SUPABASE_SERVICE_ROLE_KEY: 'legacy-service',
+        }),
+      ),
+    ).toEqual({ publishable: 'legacy-anon', secret: 'legacy-service' })
+  })
+
+  it('reports no key when none is set', () => {
+    expect(projectKeys(from({ SUPABASE_SECRET_KEYS: '{}' }))).toEqual({
+      publishable: undefined,
+      secret: undefined,
+    })
   })
 })

@@ -29,6 +29,7 @@ alter default privileges in schema private revoke execute on functions from anon
 create function private.raise(p_code text, p_message text, p_details jsonb default null)
 returns void
 language plpgsql
+stable -- no side effects, only the exception (never immutable: that could fold it at plan time)
 set search_path = ''
 as $$
 declare
@@ -128,10 +129,12 @@ as $$
 $$;
 
 -- Raises unless the caller is active staff (optionally an admin); returns the user id.
--- Volatile on purpose: a function that raises must never be evaluated early by the planner.
+-- STABLE, never IMMUTABLE: it only reads the session and raises, and the planner never folds a
+-- STABLE call at plan time (an IMMUTABLE one could raise before it is reached).
 create function private.require_staff(p_admin boolean default false)
 returns uuid
 language plpgsql
+stable -- reads the session only
 security definer
 set search_path = ''
 as $$
@@ -268,6 +271,53 @@ as $$
   delete from public.rate_limit_counters c where c.bucket = p_bucket and c.subject = p_subject
 $$;
 
+-- Spends p_amount from the budget of one subject (device, address) in one window; raises
+-- rate_limited, spending nothing, past p_limit. No subject (no address known): no budget.
+-- Keeps the Free-plan database from being filled by a script (ADR 0021).
+create function private.spend_budget(
+  p_bucket text,
+  p_subject text,
+  p_window timestamptz,
+  p_amount integer,
+  p_limit integer,
+  p_message text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_used integer;
+begin
+  if p_subject is null then
+    return;
+  end if;
+  insert into public.rate_limit_counters (bucket, subject, window_start, count)
+  values (p_bucket, p_subject, p_window, 0)
+  on conflict (bucket, subject, window_start) do nothing;
+  select c.count into v_used from public.rate_limit_counters c
+  where c.bucket = p_bucket and c.subject = p_subject and c.window_start = p_window
+  for update;
+  if v_used + p_amount > p_limit then
+    perform private.raise('rate_limited', p_message);
+  end if;
+  update public.rate_limit_counters c set count = c.count + p_amount
+  where c.bucket = p_bucket and c.subject = p_subject and c.window_start = p_window;
+end;
+$$;
+
+-- toLocaleLowerCase('tr') for search and nicknames (the mock's comparison, entities/explorer):
+-- I → ı and İ → i, and the Turkish capitals mapped explicitly so no database locale matters.
+create function private.tr_lower(p_text text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select lower(translate(p_text, 'IİÇĞÖŞÜÂÎÛ', 'ıiçğöşüâîû'))
+$$;
+
 create function private.sha256_hex(p_text text)
 returns text
 language sql
@@ -326,7 +376,6 @@ alter table public.ai_usage enable row level security;
 alter table public.audit_log enable row level security;
 
 grant select on
-  public.profiles,
   public.kits,
   public.kit_versions,
   public.qr_codes,
@@ -340,6 +389,11 @@ grant select on
   public.ai_usage,
   public.audit_log
 to authenticated;
+
+-- Profiles: every column but the temporary password's hash, which only definer RPCs read.
+grant select (
+  id, email, display_name, role, active, must_change_password, temp_password_expires_at, created_at
+) on public.profiles to authenticated;
 
 create policy profiles_read on public.profiles for select to authenticated
   using (id = auth.uid() or private.is_admin());

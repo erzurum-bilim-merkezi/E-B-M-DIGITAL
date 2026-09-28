@@ -16,10 +16,27 @@ import type { EventSink } from './port'
 
 /**
  * Offline-tolerant event queue (ADR 0012): events are written locally first, then sent in
- * batches of ≤ 50 when online. `clientEventId` makes resends harmless; the oldest events are
- * dropped beyond 500 so a device offline for weeks cannot grow without bound.
+ * batches of ≤ 50 when online. `clientEventId` makes resends harmless. Beyond 500 events the
+ * oldest are dropped — completions last — so a device offline for weeks cannot grow unbounded.
  */
 export const MAX_QUEUE_LENGTH = 500
+
+/** Events that make progress: a full queue drops every other kind first. */
+const PROGRESS_EVENTS = new Set<ActivityType>(['card_complete', 'kit_complete'])
+
+/** The queue within its limit: the oldest other events go first, then the oldest of all. */
+export function capQueue(events: readonly ActivityEvent[], max = MAX_QUEUE_LENGTH) {
+  let excess = events.length - max
+  if (excess <= 0) return [...events]
+  const kept = events.filter((event) => {
+    if (excess > 0 && !PROGRESS_EVENTS.has(event.type)) {
+      excess -= 1
+      return false
+    }
+    return true
+  })
+  return excess > 0 ? kept.slice(excess) : kept
+}
 
 export const eventQueue = createStoredValue(
   'kasif:activity-queue:v1',
@@ -79,7 +96,7 @@ export function track<T extends ActivityType>(input: EventInput<T>) {
   }
   const parsed = activityEventSchema.safeParse(candidate)
   if (!parsed.success) return
-  eventQueue.set([...eventQueue.get(), parsed.data].slice(-MAX_QUEUE_LENGTH))
+  eventQueue.set(capQueue([...eventQueue.get(), parsed.data]))
   scheduleFlush(300)
 }
 
@@ -98,7 +115,14 @@ export async function flushQueue() {
       try {
         // oxlint-disable-next-line no-await-in-loop -- batches go out one at a time, oldest first (queue order, server rate limit)
         const result = await sink.send(batch)
-        for (const listener of listeners) listener({ events: batch, newBadges: result.newBadges })
+        for (const listener of listeners) {
+          // A failing listener must not resend the batch forever and stall the queue.
+          try {
+            listener({ events: batch, newBadges: result.newBadges })
+          } catch (error) {
+            console.error(error)
+          }
+        }
       } catch (error) {
         // A batch the server can never accept (e.g. a deleted member) must not block the queue.
         if (!(isAppError(error) && (error.code === 'validation' || error.code === 'forbidden')))

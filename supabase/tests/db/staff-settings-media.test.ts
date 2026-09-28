@@ -92,6 +92,25 @@ describe('Studio accounts', () => {
     expect(right.error?.code).toBe('rate_limited')
   })
 
+  it('never lets a session reset the current-password lock between guesses', async () => {
+    const editor = await db().createStaff({ role: 'editor', mustChangePassword: false })
+    await setPassword(editor, 'Dogru.Parola.1')
+    for (let attempt = 1; attempt < 5; attempt++) {
+      await db()
+        .as(editor)
+        .rpc<Result>('verify_current_password', { p_password: `yanlis-${attempt}` })
+    }
+    const auditBefore = await db().sql('select count(*)::int as n from public.audit_log')
+
+    // Nothing to complete: no side effects, the four failures still count.
+    await db().as(editor).rpc<Staff>('complete_password_change')
+    const fifth = await db()
+      .as(editor)
+      .rpc<Result>('verify_current_password', { p_password: 'yanlis-5' })
+    expect(fifth.error?.code).toBe('rate_limited')
+    expect(await db().sql('select count(*)::int as n from public.audit_log')).toEqual(auditBefore)
+  })
+
   describe('temporary passwords (enforced by the server, not the browser)', () => {
     it('keeps the flag until the password really changed', async () => {
       const editor = await withTemporaryPassword()
@@ -119,11 +138,15 @@ describe('Studio accounts', () => {
       const editor = await db().createStaff({ role: 'editor' })
       const sessions = () =>
         db().sql('select id from auth.sessions where user_id = $1', [editor.id])
-      await db().sql('insert into auth.sessions (user_id) values ($1)', [editor.id])
+      await db().sql('insert into auth.sessions (id, user_id) values (gen_random_uuid(), $1)', [
+        editor.id,
+      ])
       await db().as(admin).rpc('staff_mark_password_reset', { p_user: editor.id })
       expect(await sessions()).toEqual([])
 
-      await db().sql('insert into auth.sessions (user_id) values ($1)', [editor.id])
+      await db().sql('insert into auth.sessions (id, user_id) values (gen_random_uuid(), $1)', [
+        editor.id,
+      ])
       await db().as(admin).rpc('staff_update', { p_user: editor.id, p_active: false })
       expect(await sessions()).toEqual([])
     })
@@ -288,6 +311,29 @@ describe('media library', () => {
     })
   })
 
+  it('searches names and alt texts with Turkish letter case', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const id = crypto.randomUUID()
+    await uploaded(id, 'webp', 1000, 'image/webp')
+    await db().as(editor).rpc('media_register', {
+      p_id: id,
+      p_kind: 'image',
+      p_name: 'IŞIK.webp',
+      p_mime: 'image/webp',
+      p_alt: 'Çiçek İçinde bir böcek',
+    })
+    const found = (needle: string) =>
+      db()
+        .as(editor)
+        .sql<{ id: string }>(
+          `select m.id from public.media_assets m where public.media_search(m) like '%' || $1 || '%'`,
+          [needle],
+        )
+    expect(await found('ışık')).toEqual([{ id }])
+    expect(await found('çiçek içinde')).toEqual([{ id }])
+    expect(await found('isik')).toEqual([])
+  })
+
   it.each([
     ['a file that was not uploaded', null, 'image', 'image/webp', 'alt', KS.not_found],
     ['an image over 300 kB', 400_000, 'image', 'image/webp', 'alt', KS.validation],
@@ -389,7 +435,9 @@ describe('storage policies', () => {
       [editor.id],
     )
     const removed = (actor: Actor) =>
-      db().as(actor).sql(`delete from storage.objects where name = 'uploads/o.png' returning name`)
+      db()
+        .as(actor)
+        .storageApi(`delete from storage.objects where name = 'uploads/o.png' returning name`)
     expect(await removed(other)).toEqual([])
     expect(await removed(editor)).toEqual([{ name: 'uploads/o.png' }])
   })
@@ -410,7 +458,9 @@ describe('storage policies', () => {
     })
     const removed = await db()
       .as(editor)
-      .sql('delete from storage.objects where name = $1 returning name', [`uploads/${id}.png`])
+      .storageApi('delete from storage.objects where name = $1 returning name', [
+        `uploads/${id}.png`,
+      ])
     expect(removed).toEqual([])
   })
 
@@ -427,6 +477,17 @@ describe('storage policies', () => {
     expect(bucket?.allowed_mime_types).not.toContain('image/svg+xml')
   })
 
+  it('deletes files only through the Storage API, never with plain SQL', async () => {
+    const admin = await db().createStaff({ role: 'admin' })
+    await db().sql(
+      `insert into storage.objects (bucket_id, name) values ('media', 'uploads/y.png')`,
+    )
+    const error = await dbError(
+      db().as(admin).sql(`delete from storage.objects where name = 'uploads/y.png'`),
+    )
+    expect(error.code).toBe('42501')
+  })
+
   it('lets only admins delete media files', async () => {
     const editor = await db().createStaff({ role: 'editor' })
     const admin = await db().createStaff({ role: 'admin' })
@@ -434,7 +495,9 @@ describe('storage policies', () => {
       `insert into storage.objects (bucket_id, name) values ('media', 'uploads/x.png')`,
     )
     const removed = (actor: Actor) =>
-      db().as(actor).sql(`delete from storage.objects where name = 'uploads/x.png' returning name`)
+      db()
+        .as(actor)
+        .storageApi(`delete from storage.objects where name = 'uploads/x.png' returning name`)
     expect(await removed(editor)).toEqual([])
     expect(await removed(admin)).toEqual([{ name: 'uploads/x.png' }])
   })
@@ -484,12 +547,14 @@ describe('changes made straight through Supabase Auth', () => {
     await db().sql(`update auth.mfa_factors set status = 'verified' where user_id = $1`, [
       editor.id,
     ])
-    const actions = await db().sql<{ action: string }>(
-      'select action from public.audit_log where entity_id = $1 order by at, action',
+    const actions = await db().sql<{ action: string; actor_id: string | null }>(
+      'select action, actor_id from public.audit_log where entity_id = $1 order by at, action',
       [editor.id],
     )
     expect(actions.map((row) => row.action).toSorted()).toEqual(
       ['auth.mfa_factor_added', 'auth.mfa_factor_verified', 'auth.password_set'].toSorted(),
     )
+    // Who made the change is unknown at this level (it may be an admin's reset).
+    expect(actions.every((row) => row.actor_id === null)).toBe(true)
   })
 })

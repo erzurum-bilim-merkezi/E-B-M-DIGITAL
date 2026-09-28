@@ -50,7 +50,8 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -o pipefail
-          supabase db push --db-url "$SUPABASE_DB_URL" --dry-run | tee dry-run.txt
+          # The CLI writes the list to stderr: keep both streams (written only when the dry run succeeded).
+          supabase db push --db-url "$SUPABASE_DB_URL" --dry-run 2>&1 | tee dry-run.txt
           {
             echo '### Pending migrations (dry run)'
             echo '```'

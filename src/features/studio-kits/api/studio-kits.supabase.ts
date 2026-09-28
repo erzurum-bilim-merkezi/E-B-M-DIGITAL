@@ -15,6 +15,7 @@ import {
   studioKitSchema,
   validateKitForPublish,
   type KitDocument,
+  type KitIndexEntry,
   type KitVersion,
 } from '@/entities/kit'
 import { AppError } from '@/shared/api/errors'
@@ -65,12 +66,35 @@ async function getKit(id: string) {
   return studioKitSchema.parse(row)
 }
 
-/** Every kit, paged by id: a draft saved between two pages must not move a kit to a read page. */
+/** Every kit with its draft, paged by id (a draft saved between pages cannot move a kit). */
 async function allKits() {
   const rows = await readAll((from, to) =>
     staffClient().from('kits').select(KIT_COLUMNS).order('id').range(from, to),
   )
   return kitList.parse(rows)
+}
+
+const KIT_INDEX_COLUMNS = 'id, slug, status, visibility, publishedVersion:published_version'
+const kitIndexList = z.array(
+  studioKitSchema.pick({
+    id: true,
+    slug: true,
+    status: true,
+    visibility: true,
+    publishedVersion: true,
+  }),
+)
+
+/**
+ * Every kit as the indexes need it, paged by id (a draft saved between two pages must not move a
+ * kit to a read page). No drafts: one that fails validation cannot stop publishing, and each
+ * rebuild downloads far less.
+ */
+async function indexKits(): Promise<KitIndexEntry[]> {
+  const rows = await readAll((from, to) =>
+    staffClient().from('kits').select(KIT_INDEX_COLUMNS).order('id').range(from, to),
+  )
+  return kitIndexList.parse(rows)
 }
 
 /** Parses a draft the way the mock does before saving it. */
@@ -163,7 +187,7 @@ async function regenerateIndexes() {
     const generation = z.coerce.number().parse(await rpc('publish_generation'))
     // oxlint-disable-next-line no-await-in-loop -- see above
     const [kits, versions, qrRows] = await Promise.all([
-      allKits(),
+      indexKits(),
       finalizedVersions(),
       allQrCodes(),
     ])
@@ -307,7 +331,7 @@ export function createSupabaseKitRepository(): KitRepository {
     async duplicate(id) {
       const [source, kits, prefixes] = await Promise.all([
         getKit(id),
-        allKits(),
+        indexKits(),
         rpc('kit_taken_prefixes').then((value) => z.array(z.string()).parse(value)),
       ])
       const identity = duplicateIdentity(
@@ -451,7 +475,7 @@ export function createSupabasePublishingService(): PublishingService {
 
     regenerateSnapshots: () =>
       withLease(async () => {
-        const [versions, kits] = await Promise.all([finalizedVersions(), allKits()])
+        const [versions, kits] = await Promise.all([finalizedVersions(), indexKits()])
         const slugs = new Map(kits.map((kit) => [kit.id, kit.slug]))
         // A restore from backup: rewrite every snapshot file (same content = overwrite is safe).
         const failed = (

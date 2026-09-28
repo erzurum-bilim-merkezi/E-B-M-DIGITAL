@@ -394,6 +394,19 @@ describe('Supabase index regeneration', () => {
     expect(removed).toEqual([])
     expect(uploads.map((upload) => upload.path)).toContain('kits/kucuk-ciftciler/latest.json')
   })
+
+  it('rebuilds without reading drafts, so a broken one cannot stop publishing', async () => {
+    const back = kitRow({ status: 'published', publishedVersion: 1 })
+    rpc('kit_unarchive', () => back)
+    const { uploads } = publishedIndexes(back)
+    // A draft that fails the app's schema (an old Studio tab, a direct RPC call).
+    const kitReads = table('kits', [{ ...back, draft: { title: 42 } }])
+
+    await publishing.unarchive(KIT_ID)
+
+    expect(kitReads[0]?.get('select')).not.toContain('draft')
+    expect(uploads.map((upload) => upload.path)).toContain('catalog.json')
+  })
 })
 
 describe('Supabase QR registry', () => {

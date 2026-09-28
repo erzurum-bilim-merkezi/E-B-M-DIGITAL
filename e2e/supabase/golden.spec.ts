@@ -11,6 +11,10 @@ import { SUPABASE_E2E } from './accounts.ts'
  * tablet with the Kâşif kodu. Nothing is injected — every step goes through the UI and Supabase.
  */
 
+// One journey on one stack, never reset between attempts: a retry would meet the first attempt's
+// kit and member (a second "Supabase Bahçesi", a second "Kaan") and hide the real failure.
+test.describe.configure({ retries: 0 })
+
 const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }
 
 async function newDevice(browser: Browser, baseURL: string, options = {}) {

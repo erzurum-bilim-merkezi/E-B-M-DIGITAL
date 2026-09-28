@@ -28,11 +28,21 @@ const KIDS_SNAPSHOT: QuerySnapshot = {
   maxAgeMs: 30 * 24 * 60 * 60 * 1000,
 }
 const keepKidsData = () => !centerDevice.get()
+/** The kept queries are never garbage-collected while the app runs (see restoreQueries). */
+const KEPT_KIDS_QUERIES = [
+  [KIDS_QUERY_ROOT, 'explorers'],
+  [KIDS_QUERY_ROOT, 'progress'],
+] as const
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => {
     const client = createQueryClient()
-    if (isSupabaseBackend && keepKidsData()) restoreQueries(client, KIDS_SNAPSHOT)
+    if (isSupabaseBackend) {
+      for (const key of KEPT_KIDS_QUERIES) {
+        client.setQueryDefaults(key, { gcTime: Number.POSITIVE_INFINITY })
+      }
+      if (keepKidsData()) restoreQueries(client, KIDS_SNAPSHOT)
+    }
     return client
   })
   useEffect(

@@ -58,7 +58,12 @@ export function restoreQueries(queryClient: QueryClient, snapshot: QuerySnapshot
       forget(snapshot.key)
       return
     }
-    hydrate(queryClient, stored.data.state)
+    // Restored queries are never garbage-collected while the app runs (small data): after the
+    // default five minutes one no page watches (badges during a kit) would drop out of the next
+    // save. Infinity, not maxAgeMs: a timer longer than ~24.8 days overflows and fires at once.
+    hydrate(queryClient, stored.data.state, {
+      defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY } },
+    })
   } catch {
     forget(snapshot.key)
   }

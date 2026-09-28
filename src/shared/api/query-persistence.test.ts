@@ -89,3 +89,24 @@ describe('query snapshots', () => {
     expect(stored()).toBeNull()
   })
 })
+
+describe('restored queries', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => {
+    vi.useRealTimers()
+    localStorage.removeItem(KEY)
+  })
+
+  it('outlive the default garbage collection while no page watches them', () => {
+    const client = new QueryClient()
+    const stop = saveQueries(client, snapshot)
+    client.setQueryData(['kids', 'badges'], ['kit:1'])
+    vi.advanceTimersByTime(500)
+    stop()
+
+    const next = new QueryClient()
+    restoreQueries(next, snapshot)
+    vi.advanceTimersByTime(6 * 60 * 1000)
+    expect(next.getQueryData(['kids', 'badges'])).toEqual(['kit:1'])
+  })
+})

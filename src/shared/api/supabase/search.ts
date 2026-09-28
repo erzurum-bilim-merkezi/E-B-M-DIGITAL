@@ -6,6 +6,7 @@
 export function searchTerm(query: string) {
   return query
     .replace(/[%,()*"\\]/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim()
     .toLocaleLowerCase('tr')
 }

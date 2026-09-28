@@ -1,0 +1,77 @@
+name: Weekly backup (live)
+
+# The Free plan keeps no backup that can be downloaded: every week the database (roles, schema,
+# data) and the uploaded media are copied, encrypted with the age public key, and kept as a
+# 90-day artifact. Read-only on the live project. Environment `backup`: no reviewers (a schedule
+# cannot wait for approval), deployment branch main only, secrets as in the runbook.
+on:
+  schedule:
+    - cron: '23 1 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: backup
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # No install scripts: a dependency never runs code next to the production secrets.
+      - run: npm ci --ignore-scripts
+      # Pinned to a commit (v1.7.3): third-party code runs in the job that holds the live secrets.
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb
+        with:
+          version: 2.117.0
+      - name: The backup environment is set up
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          AGE_PUBLIC_KEY: ${{ secrets.BACKUP_AGE_PUBLIC_KEY }}
+        run: |
+          missing=""
+          [ -n "$SUPABASE_DB_URL" ] || missing="$missing SUPABASE_DB_URL"
+          [ -n "$SUPABASE_PROJECT_REF" ] || missing="$missing SUPABASE_PROJECT_REF"
+          [ -n "$SUPABASE_SECRET_KEY" ] || missing="$missing SUPABASE_SECRET_KEY"
+          [ -n "$AGE_PUBLIC_KEY" ] || missing="$missing BACKUP_AGE_PUBLIC_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Secrets of the backup environment are missing:$missing (runbook §2)."
+            exit 1
+          fi
+      - name: Database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir -p backup
+          supabase db dump --db-url "$SUPABASE_DB_URL" --role-only -f backup/roles.sql
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f backup/schema.sql
+          supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy -f backup/data.sql
+      - name: Media and AI drawings
+        env:
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: node scripts/backup-storage.mjs backup/storage
+      - name: Encrypt
+        env:
+          AGE_PUBLIC_KEY: ${{ secrets.BACKUP_AGE_PUBLIC_KEY }}
+        run: |
+          sudo apt-get install -y age > /dev/null
+          tar czf backup.tar.gz backup
+          age -r "$AGE_PUBLIC_KEY" -o "weekly-backup-${GITHUB_RUN_ID}.tar.gz.age" backup.tar.gz
+          rm -rf backup backup.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: weekly-backup-${{ github.run_id }}
+          path: weekly-backup-*.tar.gz.age
+          retention-days: 90

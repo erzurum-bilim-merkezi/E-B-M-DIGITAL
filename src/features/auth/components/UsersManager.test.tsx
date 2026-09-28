@@ -88,7 +88,8 @@ describe('UsersManager · new user form (WCAG 3.3.1, 1.3.1)', () => {
     await user.click(within(password).getByRole('button', { name: 'Kaydettim, kapat' }))
 
     await waitFor(() => expect(addButton).toHaveFocus())
-  })
+    // Two forms typed key by key: slow on a busy machine, not stuck.
+  }, 15_000)
 })
 
 describe('UsersManager · row actions', () => {

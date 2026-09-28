@@ -238,7 +238,8 @@ describe('Kâşif app', () => {
     await user.type(await screen.findByLabelText('Kâşif kodun'), 'KSFAAAABBBB')
     await user.click(screen.getByRole('button', { name: /Giriş yap/ }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/deneme hakkın kaldı/)
+    // The alert may show before the server's answer fills it: wait for the message itself.
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/deneme hakkın kaldı/))
   })
 
   it('shows the privacy notice', async () => {

@@ -129,7 +129,8 @@ as $$
 $$;
 
 -- Raises unless the caller is active staff (optionally an admin); returns the user id.
--- Volatile on purpose: a function that raises must never be evaluated early by the planner.
+-- STABLE, never IMMUTABLE: it only reads the session and raises, and the planner never folds a
+-- STABLE call at plan time (an IMMUTABLE one could raise before it is reached).
 create function private.require_staff(p_admin boolean default false)
 returns uuid
 language plpgsql

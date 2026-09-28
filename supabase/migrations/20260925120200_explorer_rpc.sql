@@ -95,9 +95,18 @@ language sql
 stable
 set search_path = ''
 as $$
-  select nullif(btrim(
-    coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'cf-connecting-ip', '')
-  ), '')
+  with header as (
+    select nullif(btrim(coalesce(
+      nullif(current_setting('request.headers', true), '')::jsonb ->> 'cf-connecting-ip', ''
+    )), '') as ip
+  )
+  -- IPv6: the /64 network, inside which one device can rotate its addresses.
+  select case
+    when ip ~ '^[0-9A-Fa-f:]+$' and position(':' in ip) > 0
+      then host(network(set_masklen(ip::inet, 64))) || '/64'
+    else ip
+  end
+  from header
 $$;
 
 -- Per-IP guard over all devices behind one address: 50 failures in 15 minutes.
@@ -265,9 +274,12 @@ begin
   values ('register', v_device::text, date_trunc('hour', now()), 1)
   on conflict (bucket, subject, window_start)
   do update set count = public.rate_limit_counters.count + 1;
-  -- And per address and day: a busy centre, not a script behind one IP.
-  perform private.spend_budget('register-ip-day', private.client_ip(), date_trunc('day', now()),
-    1, 500, 'Bu ağdan bugün çok fazla yeni kâşif oluşturuldu. Yarın tekrar deneyin.');
+  -- And per address and day: a busy centre, not a script behind one IP. Staff-activated centre
+  -- tablets skip it, so no one on the centre's network can spend it for them.
+  if not private.is_center_device(v_device) then
+    perform private.spend_budget('register-ip-day', private.client_ip(), date_trunc('day', now()),
+      1, 500, 'Bu ağdan bugün çok fazla yeni kâşif oluşturuldu. Yarın tekrar deneyin.');
+  end if;
 
   insert into public.explorers (nickname, avatar, display_code, created_via)
   values (

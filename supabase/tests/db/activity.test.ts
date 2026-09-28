@@ -196,6 +196,63 @@ describe('record_events', () => {
     expect((await sendFrom('198.51.100.4')).accepted).toBe(10)
   })
 
+  it('charges only stored events, and never a centre tablet the address budget', async () => {
+    const address = '203.0.113.20'
+    const spent = async (bucket: string, subject: string) =>
+      (
+        await db().sql<{ count: number }>(
+          `select coalesce(sum(count), 0)::int as count from public.rate_limit_counters
+           where bucket = $1 and subject = $2`,
+          [bucket, subject],
+        )
+      )[0]?.count
+    const sendFrom = (device: Actor, events: object[]) =>
+      db().as(device, { ip: address }).rpc<SendResult>('record_events', { p_events: events })
+
+    const phone = await db().createDevice()
+    const onPhone = await member(phone)
+    // Refused (someone else's member) and repeated events cost nothing.
+    await sendFrom(phone, opens(crypto.randomUUID()))
+    const batch = opens(onPhone)
+    await sendFrom(phone, batch)
+    await sendFrom(phone, batch)
+    expect(await spent('events-hour', phone.id)).toBe(10)
+    expect(await spent('events-ip-day', address)).toBe(10)
+
+    // Someone on the centre's network spent the address budget: the staff-activated tablet plays
+    // on, a personal phone waits for tomorrow.
+    const tablet = await db().createDevice()
+    await db().sql(
+      `insert into public.center_devices
+         (id, label, setup_code_hash, setup_expires_at, pin_hash, device_uid, activated_at, created_by)
+       values ($1, 'Tablet', 'x', now() + interval '1 day', 'y', $2, now(), $3)`,
+      [crypto.randomUUID(), tablet.id, (await db().createStaff({ role: 'admin' })).id],
+    )
+    const onTablet = await member(tablet)
+    await db().sql(
+      `update public.rate_limit_counters set count = 50000
+       where bucket = 'events-ip-day' and subject = $1`,
+      [address],
+    )
+    expect((await sendFrom(tablet, opens(onTablet))).accepted).toBe(10)
+    expect((await dbError(sendFrom(phone, opens(onPhone)))).code).toBe(KS.rate_limited)
+  })
+
+  it('counts an IPv6 /64 network as one address', async () => {
+    const phone = await db().createDevice()
+    const id = await member(phone)
+    await db().sql(
+      `insert into public.rate_limit_counters (bucket, subject, window_start, count)
+       values ('events-ip-day', '2001:db8:1:2::/64', date_trunc('day', now()), 49995)`,
+    )
+    const sendFrom = (ip: string) =>
+      db()
+        .as(phone, { ip })
+        .rpc<SendResult>('record_events', { p_events: opens(id) })
+    expect((await dbError(sendFrom('2001:db8:1:2::99'))).code).toBe(KS.rate_limited)
+    expect((await sendFrom('2001:db8:1:3::99')).accepted).toBe(10)
+  })
+
   it('awards quiz-master for five different correctly answered questions', async () => {
     const device = await db().createDevice()
     const id = await member(device)

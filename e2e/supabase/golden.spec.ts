@@ -62,11 +62,12 @@ test('Supabase: Studio → publish → kit QR → phone → Studio sees it → r
   await studio.page.getByRole('button', { name: 'Yayınla', exact: true }).click()
   await expect(studio.page.getByText('v1 yayınlandı')).toBeVisible({ timeout: 30_000 })
 
-  // The kit list searches with Turkish letter case through PostgREST (kit_search): the
-  // upper-case "BAHÇE" finds "Supabase Bahçesi", and "BAHCE" (no ç) does not.
-  await studio.page.goto('studio/kitler?q=BAHÇE')
+  // The kit list searches with Turkish letter case through PostgREST (kit_search): "BAHÇESİ"
+  // (capital İ) finds the title "Supabase Bahçesi", which plain ilike cannot; the address
+  // (supabase-bahcesi) is ASCII and matches as typed, as in the mock.
+  await studio.page.goto('studio/kitler?q=BAH%C3%87ES%C4%B0')
   await expect(studio.page.getByRole('link', { name: /Supabase Bahçesi/ }).first()).toBeVisible()
-  await studio.page.goto('studio/kitler?q=BAHCE')
+  await studio.page.goto('studio/kitler?q=bah%C3%A7em')
   // Loaded and empty (not merely still loading); a failed query would say "yüklenemedi".
   await expect(studio.page.getByText('Eşleşen kit yok')).toBeVisible()
   await studio.page.goto('studio/kitler?q=Supabase')

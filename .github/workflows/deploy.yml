@@ -51,7 +51,12 @@ jobs:
           live="$(curl -fsS -X POST "$URL/rest/v1/rpc/schema_version" -H "apikey: $KEY" \
             -H 'Content-Type: application/json' -d '{}' | tr -d '"')"
           echo "repository: $expected · live: $live"
-          if [ "$live" != "$expected" ]; then
+          if ! printf '%s' "$live" | grep -Eq '^[0-9]{14}$'; then
+            echo "::error::Could not read the live schema version. Run the db-migrate workflow first."
+            exit 1
+          fi
+          # Never a frontend newer than the database; an older one (a rollback) is fine.
+          if [ "$live" -lt "$expected" ]; then
             echo "::error::The live database is on $live, this commit needs $expected. Run the db-migrate workflow first."
             exit 1
           fi

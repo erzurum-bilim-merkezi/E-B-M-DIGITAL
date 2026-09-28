@@ -29,11 +29,14 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
 RUN test -n "$VITE_API_BASE_URL" || (echo "Build arg VITE_API_BASE_URL is required" >&2 && exit 1)
 COPY . .
 RUN npm run build
+# The nginx CSP header applies on top of the page's own: it must allow the same Supabase origin.
+# Regenerated from the same source (src/shared/config/csp.ts) for this build's project.
+RUN if [ "$VITE_BACKEND" = "supabase" ]; then       CSP_BACKEND_ORIGIN="$(node -e 'console.log(new URL(process.env.VITE_SUPABASE_URL).origin)')"         npm run csp:nginx;     fi
 
 # ---- Runtime: static files served by non-root nginx ----
 FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
 COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
-COPY docker/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY --from=build /app/docker/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \

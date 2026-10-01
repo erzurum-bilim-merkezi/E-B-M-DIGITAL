@@ -29,7 +29,7 @@ jobs:
       - name: Edge entities are in sync with the app
         run: npm run sync:edge:check
       # Pinned to a commit (v1.7.3): third-party code runs in the job that holds the live token.
-      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359
         with:
           version: 2.117.0
       - name: Deploy

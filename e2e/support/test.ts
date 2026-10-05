@@ -31,7 +31,7 @@ export type SeedSpec = {
 }
 
 export const SEEDS = {
-  /** Two published kits (Küçük Çiftçiler KC-01…07, Blok Vitrini BV-01…13) + two drafts. */
+  /** Two published kits (Küçük Çiftçiler KC-01…07, Blok Vitrini BV-01…14) + two drafts. */
   standard: {
     staff: true,
     kits: [
@@ -108,6 +108,9 @@ export async function prepareContext(
 ) {
   await context.addInitScript(
     ({ id, seed, staff, userId }) => {
+      // Init scripts run in every frame: only the app itself is seeded, never a page it frames
+      // (the interactive page runner has an opaque origin and no storage at all).
+      if (window.top !== window) return
       localStorage.setItem('kasif:mock:ai-delay', '0')
       if (seed) Object.assign(window, { __KASIF_E2E_SEED__: { id, spec: seed } })
       // Inject the staff session once per tab, so signing out inside a test sticks.
@@ -133,9 +136,20 @@ const IGNORED_CONSOLE = [
   /Failed to load resource: the server responded with a status of 404/,
 ]
 
+/**
+ * Playwright's own `serviceWorkers: 'block'` script touches `navigator.serviceWorker` in every
+ * frame; in the opaque-origin page runner (ADR 0023) the browser refuses that. Not the app's error.
+ */
+const IGNORED_PAGE_ERRORS = [
+  /^Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed/,
+]
+
 /** Collects uncaught errors, console errors and CSP violations of a page. */
 export function watchPageErrors(page: Page, errors: string[]) {
-  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`))
+  page.on('pageerror', (error) => {
+    if (IGNORED_PAGE_ERRORS.some((pattern) => pattern.test(error.message))) return
+    errors.push(`pageerror: ${error.message}`)
+  })
   page.on('console', (message) => {
     if (message.type() !== 'error') return
     const text = message.text()

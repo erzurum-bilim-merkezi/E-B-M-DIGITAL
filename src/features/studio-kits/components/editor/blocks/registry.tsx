@@ -1,10 +1,11 @@
 import { Info } from 'lucide-react'
 import type { ComponentType } from 'react'
 
-import { BLOCK_CATALOG, type BlockType, type Step } from '@/entities/kit'
+import { BLOCK_CATALOG, type BlockType, type KitDocument, type Step } from '@/entities/kit'
 
 import { ChooseCorrectEditor, CompareCardsEditor, QuizEditor } from './ChoiceEditors'
 import { ExperimentEditor } from './ExperimentEditor'
+import { InteractivePageEditor } from './InteractivePageEditor'
 import { MatchingEditor, SequenceEditor } from './PuzzleEditors'
 import {
   AnimatedSceneEditor,
@@ -35,16 +36,19 @@ export const BLOCK_EDITORS = {
   matching: MatchingEditor,
   experiment: ExperimentEditor,
   video: VideoEditor,
+  'interactive-page': InteractivePageEditor,
 } satisfies BlockEditorRegistry
 
 type BlockFieldsEditorProps = {
   step: Step
   onChange: (next: Step) => void
   issueFor: (field: string) => string | undefined
+  /** The kit around the card (ages, kit-wide limits); absent in isolated editor tests. */
+  kit?: KitDocument | undefined
 }
 
 /** The block-specific fields of a card; narrows the step union to its editor without casts. */
-export function BlockFieldsEditor({ step, onChange, issueFor }: BlockFieldsEditorProps) {
+export function BlockFieldsEditor({ step, onChange, issueFor, kit }: BlockFieldsEditorProps) {
   switch (step.type) {
     case 'info':
       return <InfoEditor step={step} onChange={onChange} issueFor={issueFor} />
@@ -72,6 +76,17 @@ export function BlockFieldsEditor({ step, onChange, issueFor }: BlockFieldsEdito
       return <ExperimentEditor step={step} onChange={onChange} issueFor={issueFor} />
     case 'video':
       return <VideoEditor step={step} onChange={onChange} issueFor={issueFor} />
+    case 'interactive-page':
+      // Keyed: the preview's pending page belongs to one card.
+      return (
+        <InteractivePageEditor
+          key={step.id}
+          step={step}
+          onChange={onChange}
+          issueFor={issueFor}
+          kit={kit}
+        />
+      )
     default: {
       // A new block type fails to compile here until it gets an editor.
       const unhandled: never = step

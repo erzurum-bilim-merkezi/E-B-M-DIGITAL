@@ -2,14 +2,21 @@
 import { topicKitMeta } from '@/features/ai-studio/api/compose'
 import * as app from '@/features/ai-studio/api/fake-provider'
 
-import { AI_ICON_MAX_BYTES, checkAiSvg } from '../../functions/_shared/entities/kit/index.ts'
+import {
+  AI_ICON_MAX_BYTES,
+  checkAiSvg,
+  checkPageHtml,
+  samplePageHtml,
+} from '../../functions/_shared/entities/kit/index.ts'
 import {
   createFakeProvider,
   fakeCardText,
   fakeIconSvg,
   fakeKitMeta,
+  fakePage,
   fakeSceneSvg,
   FAKE_TRIGGERS,
+  maliciousPageHtml,
   maliciousSvg,
   pickEmoji,
 } from '../../functions/_shared/fake-ai.ts'
@@ -56,8 +63,21 @@ describe('fake AI provider of the Edge Function', () => {
       }
       const request = { topic, ageMin: 7, ageMax: 11, cardCount: 5 }
       expect(fakeKitMeta(topic, 7, 11, 5)).toEqual(topicKitMeta(request))
+      expect(maliciousPageHtml(topic)).toBe(app.maliciousPageHtml(topic))
+      for (const prompt of [`${topic} deney`, `${topic} ${FAKE_TRIGGERS.malicious}`]) {
+        expect(fakePage(topic, prompt)).toEqual(app.fakePage(topic, prompt))
+      }
     }
     expect(FAKE_TRIGGERS).toEqual(app.FAKE_TRIGGERS)
+  })
+
+  it('writes a page that passes the page contract, and a malicious one that does not', () => {
+    for (const topic of TOPICS) {
+      expect(checkPageHtml(fakePage(topic, 'sayfa').html)).toEqual([])
+      expect(checkPageHtml(maliciousPageHtml(topic))).toEqual(
+        expect.arrayContaining(['external-url', 'network', 'storage', 'parent-access']),
+      )
+    }
   })
 
   it('draws SVGs that pass the app’s contract and are well-formed XML', () => {
@@ -130,6 +150,13 @@ describe('fake AI provider of the Edge Function', () => {
       fakeCardText('Su döngüsü', 'info'),
       fakeCardText('Su döngüsü', 'quiz'),
     ])
+
+    const page = await provider.page(
+      { prompt: 'Ay’ın evreleri', title: 'Dünya ve Ay', ageMin: 7, ageMax: 11 },
+      signal,
+    )
+    expect(page.model).toBe('fake')
+    expect(page.value).toEqual({ title: 'Dünya ve Ay', html: samplePageHtml('Dünya ve Ay') })
   })
 
   it('follows the prompt markers of the error paths', async () => {
@@ -152,5 +179,12 @@ describe('fake AI provider of the Edge Function', () => {
       signal,
     )
     expect(malicious.value.states.every((frame) => checkAiSvg(frame.svg).length > 0)).toBe(true)
+
+    const page = (prompt: string) =>
+      provider.page({ prompt, title: 'Sayfa', ageMin: 7, ageMax: 11 }, signal)
+    expect((await failure(page(`deney ${FAKE_TRIGGERS.filter}`))).kind).toBe('blocked')
+    expect((await failure(page(`deney ${FAKE_TRIGGERS.timeout}`))).kind).toBe('timeout')
+    const unsafe = await page(`sayfa ${FAKE_TRIGGERS.malicious}`)
+    expect(checkPageHtml(unsafe.value.html).length).toBeGreaterThan(0)
   })
 })

@@ -135,6 +135,16 @@ export const BLOCK_CATALOG: Record<BlockType, BlockMeta> = {
     visualRequired: true,
     completion: 'MP4’te %80 izlenince, YouTube’da “İzledim” ile',
   },
+  'interactive-page': {
+    label: 'Etkileşimli sayfa',
+    description:
+      'Yapay zekânın three.js ile tasarladığı ya da bağlantısı verilen bir sayfa kartın içinde açılır.',
+    emoji: '🌍',
+    referenceHint: 'Yok; E-B-M’deki kartların ötesinde 3B ve simülasyon sayfaları',
+    visualKinds: [],
+    visualRequired: false,
+    completion: 'Sayfa açıldıktan sonra “Keşfettim” ile',
+  },
 }
 
 /** Scene states a block drives. AI scenes must provide these plus `static`. */
@@ -333,6 +343,12 @@ const FACTORIES: Factories = {
     type: 'video',
     caption: '',
     questionAfter: '',
+  }),
+  'interactive-page': (ctx) => ({
+    ...base(ctx, 'Keşfet', '🌍', 'indigo'),
+    type: 'interactive-page',
+    instructions: 'Sayfaya dokun, döndür ve keşfet!',
+    source: { kind: 'html', prompt: '', html: '' },
   }),
 }
 

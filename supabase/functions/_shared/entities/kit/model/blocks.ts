@@ -2,6 +2,7 @@
 import { z } from 'zod'
 
 import { iconSchema } from './icons.ts'
+import { pageSourceSchema } from './page.ts'
 import {
   cardColorSchema,
   cardQrCodeSchema,
@@ -26,6 +27,7 @@ export const AI_FIELDS = [
   'options',
   'visual',
   'icon',
+  'page',
 ] as const
 export const aiProvenanceSchema = z.object({ fields: z.array(z.enum(AI_FIELDS)).max(20) })
 export type AiField = (typeof AI_FIELDS)[number]
@@ -216,6 +218,15 @@ export const videoStepSchema = z.object({
   questionAfter: z.string().max(160),
 })
 
+/** A page the child explores inside the card (ADR 0023): AI or hand-written HTML, or a link. */
+export const interactivePageStepSchema = z.object({
+  ...stepBase,
+  type: z.literal('interactive-page'),
+  /** Shown above the page ("Gezegenleri parmağınla döndür"). */
+  instructions: z.string().max(160),
+  source: pageSourceSchema,
+})
+
 export const stepSchema = z.discriminatedUnion('type', [
   infoStepSchema,
   tapRevealStepSchema,
@@ -230,6 +241,7 @@ export const stepSchema = z.discriminatedUnion('type', [
   matchingStepSchema,
   experimentStepSchema,
   videoStepSchema,
+  interactivePageStepSchema,
 ])
 
 export type Step = z.infer<typeof stepSchema>
@@ -249,6 +261,7 @@ export type SequenceStep = StepOf<'sequence'>
 export type MatchingStep = StepOf<'matching'>
 export type ExperimentStep = StepOf<'experiment'>
 export type VideoStep = StepOf<'video'>
+export type InteractivePageStep = StepOf<'interactive-page'>
 
 export const BLOCK_TYPES = [
   'info',
@@ -264,4 +277,5 @@ export const BLOCK_TYPES = [
   'matching',
   'experiment',
   'video',
+  'interactive-page',
 ] as const satisfies readonly BlockType[]

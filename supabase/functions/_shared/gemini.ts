@@ -57,6 +57,12 @@ export type SceneInput = {
   states: string[]
 }
 
+/** An interactive page (ADR 0023): what the author asked for, for which card and ages. */
+export type PageInput = { prompt: string; title: string; ageMin: number; ageMax: number }
+
+/** A whole HTML document (checked with checkPageHtml by the caller). */
+export type PageDraft = { title: string; html: string }
+
 /** Which of `count` parallel suggestions this call draws (they should differ). */
 export type SuggestionSlot = { index: number; count: number }
 
@@ -76,11 +82,12 @@ export type AiProvider = {
     signal: AbortSignal,
   ): Promise<Generated<SceneDraft>>
   icons(concept: string, signal: AbortSignal): Promise<Generated<string[]>>
+  page(input: PageInput, signal: AbortSignal): Promise<Generated<PageDraft>>
 }
 
 /**
  * Why a generation failed. `blocked`: the provider's safety filter; `rejected`: the output failed
- * our SVG checks; `quota`: the provider's daily free quota; `rate`: its per-minute limit;
+ * our SVG or page checks; `quota`: the provider's daily free quota; `rate`: its per-minute limit;
  * `invalid`: an answer we cannot use; `aborted`: the caller went away.
  */
 export type AiFailureKind =
@@ -302,6 +309,64 @@ export function iconPrompt(concept: string) {
   ].join('\n')
 }
 
+/** The page contract of checkPageHtml (entities/kit) and the page runner, in the model's words. */
+const PAGE_RULES = [
+  '1. Tam bir HTML belgesi yaz: <!doctype html> ile başlar, <html lang="tr"> ile açılır ve </html> ile biter (sonrasında hiçbir şey yazma). <head> içinde <meta charset="utf-8">, <meta name="viewport" content="width=device-width, initial-scale=1"> ve kartın başlığıyla bir <title> olsun.',
+  "2. Tek bir <script type=\"module\"> kullan. Yalnızca şu içe aktarmalar olabilir: import * as THREE from 'three' ve gerekirse import { OrbitControls } from 'three/addons/controls/OrbitControls.js'. Başka import, import(), CDN, <script src> ya da importmap yazma; three.js sayfaya zaten sağlanır.",
+  '3. Hiçbir adres yazma: http://, https:// ya da // ile başlayan bağlantı; dış resim, yazı tipi ya da stil dosyası; <link>, @import, url(...) yok. Dokuları kodla bir <canvas> üzerine çiz ya da düz renk kullan; yazı tipi olarak system-ui, sans-serif kullan.',
+  '4. Kesinlikle yasak: fetch, XMLHttpRequest, WebSocket, EventSource, Worker; localStorage, sessionStorage, indexedDB, document.cookie; <a href>, <form>, <iframe>, <object>, <embed>, <base>, <meta http-equiv>; window.open; location ya da history ile sayfa değiştirmek; eval, new Function, metinle verilen setTimeout/setInterval; parent, top, opener ve postMessage.',
+  '5. Canvas tüm pencereyi kaplasın (html ve body: margin 0, height 100%, overflow hidden; canvas: display block, width ve height 100%, touch-action none). Boyutunu ResizeObserver ile izle: renderer.setSize(genişlik, yükseklik, false) çağır ve kameranın aspect değerini güncelle.',
+  '6. Çocuk sahneyi fareyle ve dokunarak (OrbitControls ya da pointer olayları) VE klavyeyle (ok tuşları) kullanabilsin. Canvas öğesinde role="img", tabindex="0" ve neyin gösterildiğini ve nasıl kullanılacağını anlatan Türkçe bir aria-label olsun; odaklanınca :focus-visible ile görünür bir çerçeve çıksın.',
+  '7. Sayfada role="status" olan kısa bir Türkçe bilgi metni olsun: başta çocuğa ne yapacağını söylesin; çocuk bir nesneye dokunduğunda ya da bir tuşa bastığında ne olduğunu anlatacak biçimde değişsin.',
+  "8. matchMedia('(prefers-reduced-motion: reduce)').matches doğruysa sahne kendiliğinden hareket etmesin; çocuk yine de elle döndürebilsin.",
+  '9. Renderer’ı (new THREE.WebGLRenderer) try/catch içinde oluştur; WebGL yoksa bilgi metninde konuyu anlatan Türkçe bir açıklama göster. Çizim döngüsünü renderer.setAnimationLoop ile kur.',
+  '10. three.js r186 ile çalışan güncel API kullan (BufferGeometry; eski THREE.Geometry yok). Işık şiddetleri fiziksel birimlidir: AmbientLight ve DirectionalLight için 1–3 arası değerler sahneyi aydınlık tutar.',
+  '11. İçerik bilimsel olarak doğru ve yaşa uygun olsun; ekrandaki metinler kısa Türkçe cümleler olsun. Ölçeği küçültülen ya da basitleştirilen şeyleri (uzaklık, boyut, hız) bilgi metninde kısaca belirt.',
+  '12. Belge en çok 30 000 karakter olsun (hedef 8 000–15 000): yorum satırı yazma, kodu kısa ve sade tut.',
+]
+
+/** Structure only: a whole example page would be copied instead of designed. */
+const PAGE_SKELETON = [
+  '<body>',
+  '<canvas id="sahne" role="img" tabindex="0" aria-label="Güneş ve gezegenler: sürükleyerek ya da ok tuşlarıyla döndür"></canvas>',
+  '<p id="bilgi" role="status">Bir gezegene dokun!</p>',
+  '<script type="module">',
+  "import * as THREE from 'three'",
+  "import { OrbitControls } from 'three/addons/controls/OrbitControls.js'",
+  "const canvas = document.getElementById('sahne')",
+  "const bilgi = document.getElementById('bilgi')",
+  "const sakin = matchMedia('(prefers-reduced-motion: reduce)').matches",
+  'function basla() {',
+  '  let renderer',
+  "  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }) } catch { bilgi.textContent = 'Bu cihaz 3B çizimi gösteremiyor. …'; return }",
+  '  … sahne, kamera, ışıklar, nesneler, OrbitControls; ok tuşları için keydown; dokunulan nesne için pointerup + Raycaster …',
+  '  new ResizeObserver(() => { … renderer.setSize(canvas.clientWidth, canvas.clientHeight, false) … }).observe(canvas)',
+  '  renderer.setAnimationLoop(() => { if (!sakin) { … } renderer.render(sahne, kamera) })',
+  '}',
+  'basla()',
+  '</script>',
+  '</body>',
+].join('\n')
+
+export function pagePrompt(input: PageInput) {
+  return [
+    `${input.ageMin}–${input.ageMax} yaş için bir Kâşif kartında açılacak, üç boyutlu ve etkileşimli bir bilim sayfası tasarla (HTML + three.js).`,
+    `Kartın başlığı: ${quote(input.title)}`,
+    `Sayfa isteği: ${quote(input.prompt)}`,
+    '',
+    'Sayfa tablette, internete bağlı olmayan kapalı bir çerçevede açılır: three.js (r186) ve OrbitControls hazır olarak sağlanır, başka hiçbir şey yüklenemez.',
+    '',
+    'Kesin kurallar (birine bile uymayan sayfa otomatik olarak reddedilir):',
+    ...PAGE_RULES,
+    '',
+    'Yapı ipucu (yalnızca iskelet; sahneyi isteğe göre sen kur ve … yerlerini doldur):',
+    PAGE_SKELETON,
+    '',
+    `title: sayfanın kısa Türkçe başlığı, en çok ${TEXT_LIMITS.title} karakter (çoğunlukla kartın başlığı); <title> öğesine de bunu yaz.`,
+    'html: belgenin tamamı, tek bir metin olarak (Markdown kod bloğu kullanma).',
+  ].join('\n')
+}
+
 // ---------------------------------------------------------------------------------------------
 // Response schemas (Gemini `responseSchema`, an OpenAPI subset)
 // ---------------------------------------------------------------------------------------------
@@ -363,6 +428,10 @@ export function sceneSchema(states: readonly string[]): Schema {
 
 export function iconsSchema(): Schema {
   return object({ icons: array(object({ svg: STRING }), 2, 2) })
+}
+
+export function pageSchema(): Schema {
+  return object({ title: STRING, html: STRING })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -533,6 +602,16 @@ export function readIcons(value: unknown): string[] | null {
   return icons.length > 0 ? icons : null
 }
 
+/** The page as written (checkPageHtml is the caller's); the card's title when none came back. */
+export function readPage(value: unknown, input: PageInput): PageDraft | null {
+  const html = field(value, 'html')
+  if (typeof html !== 'string' || !html.trim()) return null
+  return {
+    title: text(field(value, 'title'), TEXT_LIMITS.title) || text(input.title, TEXT_LIMITS.title),
+    html: html.trim(),
+  }
+}
+
 /**
  * XML well-formedness of generated SVG (checkAiSvg is the safety contract; a drawing that is not
  * well-formed would only show as a broken image): balanced tags, quoted attributes without `<`,
@@ -640,7 +719,23 @@ export function thinkingConfig(model: string): Record<string, unknown> | undefin
   return undefined
 }
 
-export function geminiRequest(model: string, prompt: string, schema: Schema, thinking = true) {
+/** Settings of one action beyond the defaults (only pages set any). */
+export type GenerationLimits = { maxOutputTokens?: number }
+
+/**
+ * A page's answer: room for a 30 000-character document as JSON (~10k tokens) and short
+ * thinking. A page that would not end in time is cut (MAX_TOKENS → invalid) instead of running
+ * into the function's time-out.
+ */
+export const PAGE_MAX_OUTPUT_TOKENS = 16_384
+
+export function geminiRequest(
+  model: string,
+  prompt: string,
+  schema: Schema,
+  thinking = true,
+  limits: GenerationLimits = {},
+) {
   const thoughts = thinking ? thinkingConfig(model) : undefined
   return {
     systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
@@ -649,6 +744,7 @@ export function geminiRequest(model: string, prompt: string, schema: Schema, thi
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: schema,
+      ...(limits.maxOutputTokens === undefined ? {} : { maxOutputTokens: limits.maxOutputTokens }),
       ...(thoughts ? { thinkingConfig: thoughts } : {}),
     },
   }
@@ -738,9 +834,10 @@ export function createGeminiProvider(config: GeminiConfig): AiProvider {
     prompt: string,
     schema: Schema,
     signal: AbortSignal,
+    limits: GenerationLimits,
     thinking = true,
   ): Promise<Attempt> {
-    const body = geminiRequest(model, prompt, schema, thinking)
+    const body = geminiRequest(model, prompt, schema, thinking, limits)
     let response: Response
     try {
       response = await send(`${GEMINI_API}/${encodeURIComponent(model)}:generateContent`, {
@@ -757,7 +854,7 @@ export function createGeminiProvider(config: GeminiConfig): AiProvider {
       console.error(`Gemini ${model}: HTTP ${response.status} ${failure.status}`)
       // A model that does not know our thinking setting: once more with its default.
       if (response.status === 400 && 'thinkingConfig' in body.generationConfig) {
-        return attempt(model, prompt, schema, signal, false)
+        return attempt(model, prompt, schema, signal, limits, false)
       }
       if (response.status === 429) {
         return {
@@ -806,6 +903,7 @@ export function createGeminiProvider(config: GeminiConfig): AiProvider {
     schema: Schema,
     signal: AbortSignal,
     read: (json: unknown) => T | null,
+    limits: GenerationLimits = {},
   ): Promise<Generated<T>> {
     let failure = new AiProviderError('unavailable', models[0] ?? GEMINI_DEFAULT_MODEL)
     for (const wait of [0, ...(config.overloadRetryMs ?? GEMINI_OVERLOAD_RETRY_MS)]) {
@@ -817,7 +915,7 @@ export function createGeminiProvider(config: GeminiConfig): AiProvider {
       let overloaded = false
       for (const model of models) {
         // oxlint-disable-next-line no-await-in-loop -- the lighter model is only a fallback
-        const result = await attempt(model, prompt, schema, signal)
+        const result = await attempt(model, prompt, schema, signal, limits)
         if (result.ok) {
           const value = read(result.json)
           if (value === null) throw new AiProviderError('invalid', result.model)
@@ -853,5 +951,9 @@ export function createGeminiProvider(config: GeminiConfig): AiProvider {
         )
       }),
     icons: (concept, signal) => generate(iconPrompt(concept), iconsSchema(), signal, readIcons),
+    page: (input, signal) =>
+      generate(pagePrompt(input), pageSchema(), signal, (json) => readPage(json, input), {
+        maxOutputTokens: PAGE_MAX_OUTPUT_TOKENS,
+      }),
   }
 }

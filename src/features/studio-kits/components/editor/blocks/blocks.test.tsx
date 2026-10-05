@@ -113,6 +113,8 @@ function probe(step: Step): { name: RegExp; value: string } {
       return { name: /^Gözlem sorusu/, value: step.observationPrompt }
     case 'video':
       return { name: /^İzledikten sonra/, value: step.questionAfter }
+    case 'interactive-page':
+      return { name: /^Çocuğa yönerge/, value: step.instructions }
   }
 }
 

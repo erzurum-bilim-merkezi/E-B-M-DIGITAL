@@ -28,6 +28,20 @@ export type AiCardText = {
 
 export type ResolvedAsset = { url: string; alt: string; kind: string; name: string }
 
+/** "Yapay zekâyla tasarla" for interactive pages (same shape as ai-studio's AiPageDraftProps). */
+export type AiPageDraftProps = {
+  title: string
+  ageRange?: { min: number; max: number } | undefined
+  initialPrompt?: string | undefined
+  hasPage: boolean
+  onDrafted: (draft: {
+    title: string
+    html: string
+    prompt: string
+    ageRange: { min: number; max: number }
+  }) => void
+}
+
 /**
  * Capabilities the kit editor gets from other features. Features never import each other
  * (ADR 0003) — KitEditorPage composes media-library, ai-studio and kit-player through this.
@@ -65,6 +79,7 @@ export type EditorServices = {
   AiTextButton?:
     | ComponentType<{ step: Step; onApply: (draft: AiCardText, fields: AiField[]) => void }>
     | undefined
+  AiPageDraft?: ComponentType<AiPageDraftProps> | undefined
   /** Resolves asset ids (drafts store ids only) for previews and thumbnails. */
   assets: ReadonlyMap<string, ResolvedAsset>
   /** Live preview of the kit player (kit-player feature). */

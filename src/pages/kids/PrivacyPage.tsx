@@ -55,6 +55,12 @@ export function PrivacyPage() {
           üzerinden yayınlanır; bazı videolar YouTube’dan gösterilir. Bu hizmetler yurt dışında
           olabilir. Hizmet sağlayıcıların sistem kayıtları IP adresini kısa süre (1 gün) tutabilir.
         </p>
+        <p>
+          Bazı kartlar, bilim merkezinin seçtiği başka bir sitedeki etkileşimli sayfayı gösterir. Bu
+          sayfa ancak sen <strong>“Sayfayı aç”</strong> düğmesine dokununca yüklenir. O site
+          cihazının IP adresini ve tarayıcı bilgisini görür, kendi kurallarıyla çerez kullanabilir
+          ve yurt dışında olabilir. Kâşif o siteye adını, avatarını ya da Kâşif kodunu göndermez.
+        </p>
         <h2>Ne kadar süre saklanır?</h2>
         <p>
           Ayrıntılı etkinlik kayıtları 60 gün, üyelik 12 ay hareketsizlikten sonra tüm verileriyle

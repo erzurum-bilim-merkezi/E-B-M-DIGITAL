@@ -1,3 +1,4 @@
+import { samplePageHtml } from '../../functions/_shared/entities/kit/index.ts'
 import {
   AiProviderError,
   cardTextPrompt,
@@ -6,16 +7,20 @@ import {
   iconPrompt,
   isWellFormedSvg,
   kitSchema,
+  pagePrompt,
+  pageSchema,
   readCardText,
   readGeminiAnswer,
   readKit,
   readOptions,
+  readPage,
   readScene,
   resolveProvider,
   scenePrompt,
   GEMINI_API,
   GEMINI_DEFAULT_LIGHT_MODEL,
   GEMINI_DEFAULT_MODEL,
+  PAGE_MAX_OUTPUT_TOKENS,
   type KitInput,
 } from '../../functions/_shared/gemini.ts'
 
@@ -32,6 +37,8 @@ const KIT: KitInput = {
     { blockType: 'quiz', blockLabel: 'Soru', blockDescription: 'Tek doğru cevap.' },
   ],
 }
+
+const PAGE = { prompt: 'Ay’ın evreleri', title: 'Dünya ve Ay', ageMin: 7, ageMax: 11 }
 
 const CARD = {
   title: 'Su neden buharlaşır?',
@@ -130,6 +137,25 @@ describe('Gemini prompts', () => {
     expect(icon).toContain('4 000 bayt')
   })
 
+  it('spell out the page contract of checkPageHtml and the page runner', () => {
+    const page = pagePrompt(PAGE)
+    expect(page).toContain('7–11 yaş')
+    expect(page).toContain('“Dünya ve Ay”')
+    expect(page).toContain('“Ay’ın evreleri”')
+    expect(page).toContain('<html lang="tr">')
+    expect(page).toContain("import * as THREE from 'three'")
+    expect(page).toContain("import { OrbitControls } from 'three/addons/controls/OrbitControls.js'")
+    expect(page).toMatch(/fetch, XMLHttpRequest, WebSocket/)
+    expect(page).toMatch(/localStorage, sessionStorage, indexedDB/)
+    expect(page).toContain('ResizeObserver')
+    expect(page).toContain('role="img", tabindex="0"')
+    expect(page).toContain('role="status"')
+    expect(page).toContain('prefers-reduced-motion: reduce')
+    expect(page).toContain('renderer.setAnimationLoop')
+    expect(page).toContain('30 000 karakter')
+    expect(JSON.stringify(pageSchema())).toContain('"required":["title","html"]')
+  })
+
   it('give every block type its option rule and the schema limits', () => {
     const quiz = cardTextPrompt({
       topic: 'Mıknatıs',
@@ -159,6 +185,9 @@ describe('Gemini prompts', () => {
     })
     expect(geminiRequest('gemini-exp', 'x', {}).generationConfig).not.toHaveProperty(
       'thinkingConfig',
+    )
+    expect(geminiRequest('gemini-exp', 'x', {}).generationConfig).not.toHaveProperty(
+      'maxOutputTokens',
     )
   })
 })
@@ -249,6 +278,17 @@ describe('reading Gemini answers', () => {
       { state: 'static', svg: SVG },
     ])
     expect(readScene(value, ['before', 'after', 'static'])).toBeNull()
+  })
+
+  it('reads a page as written, with the card’s title when none came back', () => {
+    const html = samplePageHtml('Dünya ve Ay')
+    expect(readPage({ title: ' Ay ', html: `\n${html}\n` }, PAGE)).toEqual({
+      title: 'Ay',
+      html: html.trim(),
+    })
+    expect(readPage({ title: '', html }, PAGE)?.title).toBe('Dünya ve Ay')
+    expect(readPage({ title: 'Ay', html: '  ' }, PAGE)).toBeNull()
+    expect(readPage({ title: 'Ay' }, PAGE)).toBeNull()
   })
 
   it('tells well-formed SVG from broken markup', () => {
@@ -377,6 +417,37 @@ describe('Gemini client', () => {
 
     expect(calls[0]?.body['generationConfig']).toHaveProperty('thinkingConfig')
     expect(calls[1]?.body['generationConfig']).not.toHaveProperty('thinkingConfig')
+  })
+
+  it('gives a page, and only a page, a bounded long answer', async () => {
+    const html = samplePageHtml('Dünya ve Ay')
+    const { calls, send } = fakeFetch(status(400), ok({ title: 'Dünya ve Ay', html }), ok(CARD))
+    const gemini = createGeminiProvider({ apiKey: 'k', fetch: send })
+
+    const page = await gemini.page(PAGE, signal)
+    await gemini.cardText(card, signal)
+
+    expect(page.value).toEqual({ title: 'Dünya ve Ay', html: html.trim() })
+    // The retry without the thinking setting keeps the limit.
+    expect(calls[0]?.body['generationConfig']).toMatchObject({
+      maxOutputTokens: PAGE_MAX_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingLevel: 'low' },
+    })
+    expect(calls[1]?.body['generationConfig']).toMatchObject({
+      maxOutputTokens: PAGE_MAX_OUTPUT_TOKENS,
+    })
+    expect(calls[1]?.body['generationConfig']).not.toHaveProperty('thinkingConfig')
+    expect(calls[2]?.body['generationConfig']).not.toHaveProperty('maxOutputTokens')
+  })
+
+  it('treats a page cut at the token limit as unusable', async () => {
+    const { send } = fakeFetch(() =>
+      Response.json(answer({ title: 'x', html: '<html>' }, { finishReason: 'MAX_TOKENS' })),
+    )
+    const error = await failure(
+      createGeminiProvider({ apiKey: 'k', fetch: send }).page(PAGE, signal),
+    )
+    expect(error.kind).toBe('invalid')
   })
 
   it('rejects answers it cannot use', async () => {

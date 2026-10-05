@@ -22,6 +22,7 @@ import {
   useKidTheme,
 } from '@/shared/ui/kid'
 
+import { useAppUpdateReload } from './useAppUpdateReload'
 import { useRouteFocus } from './useRouteFocus'
 
 function ActivityBridge() {
@@ -70,6 +71,7 @@ function PreviewBadge() {
 }
 
 function KidsShell() {
+  useAppUpdateReload()
   const theme = useKidTheme()
   const { explorer } = useActiveExplorer()
   const osReduced = usePrefersReducedMotion()

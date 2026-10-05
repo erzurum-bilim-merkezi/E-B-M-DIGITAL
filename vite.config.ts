@@ -1,13 +1,21 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import path from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { build, defineConfig, loadEnv, type Plugin } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 import { buildCsp, REFERRER_POLICY } from './src/shared/config/csp.ts'
 import { findSecretLikeKeys, parseEnv, secretLeakMessage } from './src/shared/config/env.schema.ts'
+import {
+  PAGE_RUNNER_FILE,
+  PAGE_RUNTIME_DIR,
+  renderPageRunner,
+} from './src/shared/config/page-runner.ts'
 
 /** Public path the app is served from, e.g. `/E-B-M-DIGITAL/` on GitHub Pages. */
 function resolveBasePath() {
@@ -55,6 +63,88 @@ function contentSecurityPolicy(backendOrigin: string | null): Plugin {
         if (!charset.test(html)) throw new Error('index.html must start <head> with <meta charset>')
         return html.replace(charset, (match) => [match, ...tags].join('\n    '))
       },
+    },
+  }
+}
+
+/** three.js version the page runtime bundles: part of its file name, so a new one is a new file. */
+function threeVersion() {
+  // `three/package.json` is not in the package's exports; its main entry sits in build/.
+  const entry = createRequire(import.meta.url).resolve('three')
+  const manifest: unknown = JSON.parse(
+    readFileSync(path.join(path.dirname(entry), '..', 'package.json'), 'utf8'),
+  )
+  if (typeof manifest !== 'object' || manifest === null || !('version' in manifest)) {
+    throw new Error('Could not read the three.js version')
+  }
+  return String(manifest.version)
+}
+
+/**
+ * Interactive pages (ADR 0023): the page runner document and the three.js runtime it hands to
+ * pages — one self-contained, minified module bundled from scripts/page-runtime.entry.js. The dev
+ * server answers both from memory; a build writes them next to the app. `KASIF_PAGE_RUNTIME` tells
+ * the app the runtime's path.
+ */
+function pageRuntime(): Plugin {
+  const runtimeFile = `${PAGE_RUNTIME_DIR}/three-${threeVersion()}.js`
+  let runtime: Promise<string> | undefined
+  const bundle = () =>
+    (runtime ??= build({
+      configFile: false,
+      envDir: false,
+      publicDir: false,
+      logLevel: 'warn',
+      build: {
+        write: false,
+        minify: true,
+        target: 'es2023',
+        lib: {
+          entry: fileURLToPath(new URL('./scripts/page-runtime.entry.js', import.meta.url)),
+          formats: ['es'],
+          fileName: () => 'three.js',
+        },
+      },
+    })
+      .then((result) => {
+        const outputs = Array.isArray(result) ? result : [result]
+        for (const output of outputs) {
+          if (!('output' in output)) continue
+          for (const file of output.output) {
+            if (file.type === 'chunk' && file.isEntry) return file.code
+          }
+        }
+        throw new Error('The page runtime bundle produced no entry chunk')
+      })
+      .catch((error: unknown) => {
+        // The dev server tries again on the next request instead of keeping the failure.
+        runtime = undefined
+        throw error
+      }))
+  return {
+    name: 'kasif:page-runtime',
+    config: () => ({ define: { KASIF_PAGE_RUNTIME: JSON.stringify(runtimeFile) } }),
+    configureServer(server) {
+      const base = server.config.base
+      server.middlewares.use((req, res, next) => {
+        const pathname = req.url?.split('?')[0]
+        if (pathname === `${base}${PAGE_RUNNER_FILE}`) {
+          res.setHeader('Content-Type', 'text/html; charset=utf-8')
+          res.end(renderPageRunner())
+        } else if (pathname === `${base}${runtimeFile}`) {
+          bundle().then(
+            (code) => {
+              res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
+              res.end(code)
+            },
+            (error: unknown) => next(error),
+          )
+        } else next()
+      })
+    },
+    async generateBundle() {
+      this.emitFile({ type: 'asset', fileName: PAGE_RUNNER_FILE, source: renderPageRunner() })
+      this.emitFile({ type: 'asset', fileName: runtimeFile, source: await bundle() })
     },
   }
 }
@@ -125,6 +215,7 @@ export default defineConfig(({ mode }) => {
             ? new URL(appEnv.VITE_SUPABASE_URL).origin
             : null,
       ),
+      pageRuntime(),
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.svg', 'kasifkit-logo-mark.svg'],
@@ -132,8 +223,27 @@ export default defineConfig(({ mode }) => {
           cacheId: 'kasif',
           cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,svg,png,woff2,webmanifest}'],
+          // Interactive pages (ADR 0023): the runtime is cached on first use, not on every device;
+          // the runner is framed with an opaque origin and must reach the network as itself, never
+          // be answered with the app's index.html.
+          globIgnores: [`${PAGE_RUNTIME_DIR}/**`, PAGE_RUNNER_FILE],
+          // Workbox tests path + query: `page-runner.html?x` is the runner too.
+          navigateFallbackDenylist: [
+            new RegExp(`/${PAGE_RUNNER_FILE.replace('.', '\\.')}(?:\\?|$)`),
+          ],
           // Supabase Storage (plan §3.6): kits keep working when the centre's Wi-Fi drops.
           runtimeCaching: [
+            {
+              // three-<version>.js never changes once written.
+              urlPattern: ({ url, sameOrigin }) =>
+                sameOrigin && url.pathname.includes(`/${PAGE_RUNTIME_DIR}/`),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'kasif-page-runtime',
+                cacheableResponse: { statuses: [200] },
+                expiration: { maxEntries: 2 },
+              },
+            },
             {
               // catalog.json, qr-index.json, latest.json change on every publish.
               urlPattern: ({ url }) =>

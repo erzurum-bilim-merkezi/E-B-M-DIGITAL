@@ -1,0 +1,141 @@
+import { MAX_PAGE_HTML, PAGE_MODULES } from '../model/page.ts'
+
+/*
+ * Interactive page contract (ADR 0023). The page runner is the boundary: an opaque-origin sandbox
+ * whose CSP allows inline scripts and the three.js runtime, and nothing on the network. This check
+ * is the second layer, shared by the ai-generate function and the Studio: a page that tries to
+ * leave its frame, reach the network, keep data or load other code is rejected, never "fixed".
+ */
+
+export type PageProblem =
+  | 'empty'
+  | 'too-large'
+  | 'not-html'
+  | 'external-url'
+  | 'link'
+  | 'form'
+  | 'embed'
+  | 'base'
+  | 'http-equiv'
+  | 'network'
+  | 'storage'
+  | 'navigation'
+  | 'popup'
+  | 'eval'
+  | 'import'
+  | 'parent-access'
+
+/** Editor-facing reason for each problem (Turkish, shown under the page and in validation). */
+export const PAGE_PROBLEM_MESSAGES: Record<PageProblem, string> = {
+  empty: 'Sayfa boş.',
+  'too-large': `Sayfa çok uzun (en fazla ${MAX_PAGE_HTML.toLocaleString('tr-TR')} karakter).`,
+  'not-html': 'Bu bir HTML sayfası değil (<html> … </html> olmalı).',
+  'external-url': 'Sayfa dış bir adres kullanıyor; her şey sayfanın içinde olmalı.',
+  link: 'Sayfada bağlantı var; çocuk sayfadan çıkamamalı.',
+  form: 'Sayfada form var.',
+  embed: 'Sayfa başka bir sayfa ya da eklenti gömüyor (iframe, object, embed).',
+  base: 'Sayfa <base> etiketi kullanıyor.',
+  'http-equiv': 'Sayfa <meta http-equiv> kullanıyor.',
+  network: 'Sayfa internete bağlanmaya çalışıyor (fetch, XMLHttpRequest, WebSocket …).',
+  storage: 'Sayfa cihazda veri saklamaya çalışıyor (localStorage, çerez …).',
+  navigation: 'Sayfa başka bir adrese gitmeye çalışıyor.',
+  popup: 'Sayfa yeni pencere açmaya çalışıyor.',
+  eval: 'Sayfa metinden kod çalıştırıyor (eval, new Function).',
+  import: `Sayfa yalnızca ${PAGE_MODULES.map((name) => `“${name}”`).join(' ve ')} modüllerini içe aktarabilir.`,
+  'parent-access': 'Sayfa Kâşif uygulamasına erişmeye çalışıyor.',
+}
+
+/** XML namespaces name things; they are never fetched (`createElementNS` for SVG drawings). */
+const NAMESPACE = /https?:\/\/www\.w3\.org\/[\w/.-]*/g
+
+const RULES: readonly (readonly [PageProblem, RegExp])[] = [
+  // An address with a scheme anywhere, or a scheme-relative one where a browser would load it.
+  ['external-url', /\b(?:https?|wss?|ftp):\/\//i],
+  ['external-url', /\b(?:src|href|action|poster|data)\s*=\s*["']?\s*\/\//i],
+  ['external-url', /url\(\s*['"]?\s*\/\//i],
+  ['external-url', /@import\b/i],
+  ['external-url', /<link\b/i],
+  ['link', /<(?:a|area)\b[^>]*\bhref\s*=/i],
+  ['form', /<form\b/i],
+  ['embed', /<(?:iframe|frame|frameset|object|embed|portal|applet)\b/i],
+  ['base', /<base\b/i],
+  ['http-equiv', /<meta\b[^>]*\bhttp-equiv\b/i],
+  ['network', /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts)\b/],
+  ['network', /\bRTCPeerConnection\b|\bnew\s+(?:Shared)?Worker\s*\(/],
+  ['storage', /\b(?:localStorage|sessionStorage|indexedDB)\b|\bdocument\s*\.\s*cookie\b/],
+  ['navigation', /\blocation\s*\.\s*(?:href\s*=(?!=)|(?:assign|replace|reload)\b)/],
+  // `location = …` navigates; a variable of that name (`const location = …`) does not.
+  ['navigation', /(?<![.\w$])(?<!\b(?:let|const|var)\s+)location\s*=(?!=)/],
+  ['navigation', /\b(?:window|self|globalThis|document)\s*\.\s*location\s*=(?!=)/],
+  ['navigation', /\bhistory\s*\.\s*(?:pushState|replaceState|go|back|forward)\b/],
+  ['navigation', /javascript:/i],
+  ['popup', /\bwindow\s*\.\s*open\s*\(|\bshowModalDialog\b/],
+  ['eval', /\beval\s*\(|\bnew\s+Function\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/],
+  ['parent-access', /\bwindow\s*\.\s*(?:parent|top|opener|frameElement)\b/],
+  [
+    'parent-access',
+    /(?<![.\w$])(?:parent|top|opener)\s*\.\s*(?:postMessage|location|document|window)\b/,
+  ],
+  ['parent-access', /\bpostMessage\s*\(/],
+  // The runner provides the import map; a page may not bring its own or load script files.
+  ['import', /<script\b[^>]*\b(?:src\s*=|type\s*=\s*["']?importmap)/i],
+]
+
+const STATIC_IMPORT = /\bimport\s+(?:[\w$*{}\s,]+?\s+from\s+)?(['"])([^'"]*)\1/g
+const DYNAMIC_IMPORT = /\bimport\s*\(\s*([^)]*)\)/g
+
+function hasForeignImport(html: string) {
+  const allowed: ReadonlySet<string> = new Set(PAGE_MODULES)
+  for (const match of html.matchAll(STATIC_IMPORT)) {
+    if (!allowed.has(match[2] ?? '')) return true
+  }
+  for (const match of html.matchAll(DYNAMIC_IMPORT)) {
+    const literal = /^\s*(['"])([^'"]*)\1\s*$/.exec(match[1] ?? '')
+    if (!literal || !allowed.has(literal[2] ?? '')) return true
+  }
+  return false
+}
+
+/** Problems of an interactive page's HTML; empty when the page may be stored and published. */
+export function checkPageHtml(html: string): PageProblem[] {
+  const trimmed = html.trim()
+  if (!trimmed) return ['empty']
+  const problems = new Set<PageProblem>()
+  if (html.length > MAX_PAGE_HTML) problems.add('too-large')
+  if (!/<html[\s>]/i.test(trimmed) || !/<\/html>$/i.test(trimmed)) problems.add('not-html')
+  const text = html.replace(NAMESPACE, '')
+  for (const [problem, pattern] of RULES) {
+    if (pattern.test(text)) problems.add(problem)
+  }
+  if (hasForeignImport(text)) problems.add('import')
+  return [...problems]
+}
+
+export type PageUrlProblem = 'empty' | 'invalid' | 'not-https' | 'same-origin'
+
+export const PAGE_URL_MESSAGES: Record<PageUrlProblem, string> = {
+  empty: 'Sayfanın bağlantısını girin.',
+  invalid: 'Geçerli bir bağlantı girin (ör. https://ornek.org/sayfa).',
+  'not-https': 'Yalnızca https:// ile başlayan bağlantılar kabul edilir.',
+  'same-origin': 'Kâşif’in kendi adresindeki sayfalar bu kartta açılamaz.',
+}
+
+/**
+ * Problem of a linked page's address. `appOrigin` (the running app's origin) rules out pages of
+ * the app's own origin: framed with scripts and their own origin, they could read the device's
+ * session — the one case a sandbox cannot contain.
+ */
+export function checkPageUrl(url: string, appOrigin?: string): PageUrlProblem | null {
+  const value = url.trim()
+  if (!value) return 'empty'
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    return 'invalid'
+  }
+  if (parsed.protocol !== 'https:') return 'not-https'
+  if (!parsed.hostname.includes('.') || parsed.username || parsed.password) return 'invalid'
+  if (appOrigin && parsed.origin === appOrigin) return 'same-origin'
+  return null
+}

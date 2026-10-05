@@ -239,3 +239,7 @@ sb_publishable_…` ve `Content-Type: application/json`, gövde `{}`.
     **Parola sıfırla** ile geçici parola verir.
 - **Yapay zekâyı kapatmak:** Studio → Ayarlar → Yapay zekâ → Kapalı. Tamamen kapatmak için
   Supabase'de `AI_PROVIDER=off`.
+- **Yeni migration ya da Edge Function içeren bir sürüm** (ör. etkileşimli sayfa kartı, ADR 0023):
+  1. **DB migrate (live)**: önce dry run, sonra uygula. Deploy, bu yapılmadan durur.
+  2. **Edge Functions deploy (live)**.
+  3. **Deploy**: CI'dan sonra kendiliğinden başlamış ve durmuşsa yeniden çalıştır.

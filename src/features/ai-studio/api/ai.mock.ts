@@ -1,6 +1,13 @@
 import { z } from 'zod'
 
-import { checkAiSvg, findPii, svgDescription, AI_ICON_MAX_BYTES } from '@/entities/kit'
+import {
+  checkAiSvg,
+  checkPageHtml,
+  findPii,
+  svgDescription,
+  AI_ICON_MAX_BYTES,
+  MAX_PAGE_HTML,
+} from '@/entities/kit'
 import {
   appSettingsSchema,
   DEFAULT_APP_SETTINGS,
@@ -20,6 +27,7 @@ import { composeKit, kitBlockTypes, topicKitMeta } from './compose'
 import {
   fakeCardText,
   fakeIconSvg,
+  fakePage,
   fakeSceneSvg,
   FAKE_TRIGGERS,
   maliciousSvg,
@@ -31,7 +39,7 @@ export { AI_TIMEOUT_MS } from './compose'
 const usageSchema = z.object({
   id: z.uuid(),
   userId: z.uuid(),
-  kind: z.enum(['scene', 'icon', 'text', 'kit']),
+  kind: z.enum(['scene', 'icon', 'text', 'kit', 'page']),
   status: z.enum(['ok', 'blocked', 'error']),
   model: z.string(),
   createdAt: z.iso.datetime({ offset: true }),
@@ -53,8 +61,12 @@ function nextIstanbulMidnight(now = new Date()) {
 
 function quotaFor(userId: string): AiQuota {
   const today = istanbulDayKey(new Date())
+  // Same rule as ai_quota_for (20261005120000_ai_page_kind.sql): successful generations, and
+  // pages the page check rejected (they cost the provider as much).
   const todays = usageTable.filter(
-    (row) => row.status === 'ok' && istanbulDayKey(row.createdAt) === today,
+    (row) =>
+      (row.status === 'ok' || (row.kind === 'page' && row.status === 'blocked')) &&
+      istanbulDayKey(row.createdAt) === today,
   )
   const current = settings()
   return {
@@ -290,6 +302,22 @@ export function createMockAiService(): AiService {
       const cards = kitBlockTypes(request.cardCount).map((type) => fakeCardText(topic, type))
       record('ok')
       return composeKit(request, topicKitMeta(request), cards)
+    },
+
+    async draftPage(request, options) {
+      await mockGate('ai.draftPage')
+      const { record } = begin('page', `${request.prompt} ${request.title}`)
+      await simulate(options, ['queued', 'drawing', 'checking'])
+      const page = fakePage(request.title, request.prompt)
+      if (page.html.length > MAX_PAGE_HTML || checkPageHtml(page.html).length > 0) {
+        record('blocked')
+        throw new AppError(
+          'validation',
+          'Üretilen sayfa güvenlik kontrolünden geçemedi ve reddedildi. Farklı bir istem deneyin.',
+        )
+      }
+      record('ok')
+      return page
     },
   }
 }

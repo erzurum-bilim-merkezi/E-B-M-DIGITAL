@@ -17,12 +17,13 @@ describe('Content-Security-Policy', () => {
     expect(buildCsp()).not.toContain("'unsafe-eval'")
   })
 
-  it('blocks plugins, base tag hijacking and foreign frames except privacy-enhanced YouTube', () => {
+  it('blocks plugins, base tag hijacking and frames other than the page runner and https pages', () => {
     const csp = buildCsp()
 
     expect(directive(csp, 'object-src')).toBe("'none'")
     expect(directive(csp, 'base-uri')).toBe("'none'")
-    expect(directive(csp, 'frame-src')).toBe('https://www.youtube-nocookie.com')
+    // Never http:, data: or blob: frames (a blob: or data: frame could run with this CSP's rights).
+    expect(directive(csp, 'frame-src')).toBe("'self' https:")
   })
 
   it('adds the live backend origin to images, media and API calls only', () => {

@@ -29,8 +29,11 @@ export function cspDirectives({ backendOrigin = null, delivery = 'meta' }: CspOp
     ['connect-src', ["'self'", ...backend]],
     // MP4 video URLs may live on any https host; audio/video blobs from the media store.
     ['media-src', ["'self'", 'blob:', 'https:', ...backend]],
-    // YouTube only through the privacy-enhanced domain, in a sandboxed iframe.
-    ['frame-src', ['https://www.youtube-nocookie.com']],
+    // Sandboxed frames only (ADR 0023): the page runner ('self', opaque origin, no network) and
+    // the https pages interactive-page cards link to — YouTube among them, through the
+    // privacy-enhanced domain. Framing grants no script in this document; the sandbox attributes
+    // are set by the components (VideoPlayer, UrlPageFrame, HtmlPageFrame).
+    ['frame-src', ["'self'", 'https:']],
     ['worker-src', ["'self'"]],
     ['manifest-src', ["'self'"]],
     ['base-uri', ["'none'"]],

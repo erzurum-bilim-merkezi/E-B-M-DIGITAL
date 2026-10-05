@@ -11,4 +11,5 @@ export {
 } from './api/queries'
 export { FAKE_TRIGGERS } from './api/fake-provider'
 export { AiIconGenerator, AiKitDraftForm, AiScenePanel, AiTextButton } from './components/AiPanels'
+export { AiPageDraftForm, type AiPageDraftProps } from './components/AiPageDraft'
 export { useAiEnabled } from './hooks/useAiEnabled'

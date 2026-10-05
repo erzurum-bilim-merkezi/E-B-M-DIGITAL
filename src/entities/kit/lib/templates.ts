@@ -18,6 +18,7 @@ export const KIT_TEMPLATE_IDS = [
   'experiment',
   'quiz',
   'story',
+  'page',
   'sample',
 ] as const
 export type KitTemplateId = (typeof KIT_TEMPLATE_IDS)[number]
@@ -73,6 +74,13 @@ export const KIT_TEMPLATES: Record<KitTemplateId, TemplateMeta> = {
     emoji: '📖',
     blocks: ['info', 'animated-scene', 'info', 'animated-scene', 'info'],
     preset: 'sunset',
+  },
+  page: {
+    label: 'Etkileşimli sayfa',
+    description: 'Yapay zekâya three.js ile bir sayfa tasarlatın ya da hazır bir bağlantı verin.',
+    emoji: '🌍',
+    blocks: ['interactive-page'],
+    preset: 'space',
   },
   sample: {
     label: 'Örnek: Küçük Çiftçiler',

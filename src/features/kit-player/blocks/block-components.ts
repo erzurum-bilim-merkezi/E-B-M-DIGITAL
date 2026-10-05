@@ -4,6 +4,7 @@ import type { BlockType } from '@/entities/kit'
 
 import { ChooseCorrectBlock, CompareCardsBlock, QuizBlock } from './ChoiceBlocks'
 import { ExperimentBlock } from './ExperimentBlock'
+import { InteractivePageBlock } from './InteractivePageBlock'
 import { MatchingBlock, SequenceBlock } from './PuzzleBlocks'
 import {
   AnimatedSceneBlock,
@@ -33,4 +34,5 @@ export const BLOCK_COMPONENTS = {
   matching: MatchingBlock,
   experiment: ExperimentBlock,
   video: VideoBlock,
+  'interactive-page': InteractivePageBlock,
 } satisfies BlockRegistry

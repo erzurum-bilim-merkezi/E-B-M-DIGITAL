@@ -3,6 +3,12 @@ import type { KitDocument } from '../model/kit.ts'
 import { SCENE_CATALOG, STATIC_STATE, sceneSupportsState, type Visual } from '../model/visual.ts'
 import { BLOCK_CATALOG, requiredSceneStates } from './block-catalog.ts'
 import { isAccentAccessible } from './contrast.ts'
+import {
+  checkPageHtml,
+  checkPageUrl,
+  PAGE_PROBLEM_MESSAGES,
+  PAGE_URL_MESSAGES,
+} from './page-html.ts'
 
 export type IssueSeverity = 'error' | 'warning'
 export type EditorTab = 'genel' | 'kartlar' | 'tema' | 'rozet'
@@ -185,10 +191,33 @@ function checkBlock(step: Step, issues: KitIssue[]) {
       break
     case 'video':
       break
+    case 'interactive-page': {
+      const { source } = step
+      if (source.kind === 'html') {
+        const [problem] = checkPageHtml(source.html)
+        if (problem === 'empty') {
+          error('source', 'Sayfa henüz yok: sayfayı tasarlayın ya da HTML’ini ekleyin.')
+        } else if (problem) {
+          error('source', `Sayfa denetimden geçmiyor: ${PAGE_PROBLEM_MESSAGES[problem]}`)
+        }
+      } else {
+        const problem = checkPageUrl(source.url)
+        if (problem) error('source', PAGE_URL_MESSAGES[problem])
+        else {
+          issues.push({
+            ...at('source'),
+            severity: 'warning',
+            message:
+              'Bağlantıdaki sayfanın çocuklara uygun ve reklamsız olduğunu kontrol edin; site kendi çerezlerini kullanabilir.',
+          })
+        }
+      }
+      break
+    }
   }
 }
 
-const ANSWER_OPTIONAL = new Set<Step['type']>(['info', 'video', 'experiment'])
+const ANSWER_OPTIONAL = new Set<Step['type']>(['info', 'video', 'experiment', 'interactive-page'])
 
 /**
  * Content rules a kit must satisfy before publishing, as editor-friendly Turkish messages.

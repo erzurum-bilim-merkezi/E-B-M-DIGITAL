@@ -19,3 +19,6 @@ interface ImportMeta {
 
 /** Set by vite.config.ts at build time: tells one build's stored snapshots from another's. */
 declare const KASIF_BUILD_ID: string
+
+/** Set by vite.config.ts: path of the three.js runtime the page runner gets (ADR 0023). */
+declare const KASIF_PAGE_RUNTIME: string

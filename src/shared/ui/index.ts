@@ -72,3 +72,10 @@ export { richTextToPlain } from './rich-text'
 // Toast API (Sonner): call sites import it from here, never from the library directly.
 export { toast } from 'sonner'
 export { Toaster } from './toast'
+export {
+  HTML_PAGE_SANDBOX,
+  HtmlPageFrame,
+  URL_PAGE_SANDBOX,
+  UrlPageFrame,
+  type PageFrameStatus,
+} from './page-frame'

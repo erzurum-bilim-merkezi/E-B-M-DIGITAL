@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { stepSchema, type Step } from './blocks.ts'
 import { iconSchema } from './icons.ts'
+import { MAX_KIT_PAGE_HTML } from './page.ts'
 import {
   cardColorSchema,
   emojiSchema,
@@ -164,6 +165,24 @@ function checkIdentities(kit: z.infer<typeof kitDocumentShape>, ctx: z.Refinemen
       message: 'En küçük yaş en büyük yaştan büyük olamaz',
     })
   }
+  if (kitPageHtmlLength(kit.steps) > MAX_KIT_PAGE_HTML) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['steps'],
+      message: 'Etkileşimli sayfaların toplam boyutu kit sınırını aşıyor',
+    })
+  }
+}
+
+/** Characters of HTML all interactive pages of a kit hold (limit: MAX_KIT_PAGE_HTML). */
+export function kitPageHtmlLength(steps: readonly Step[]) {
+  return steps.reduce(
+    (total, step) =>
+      step.type === 'interactive-page' && step.source.kind === 'html'
+        ? total + step.source.html.length
+        : total,
+    0,
+  )
 }
 
 export const kitDocumentSchema = kitDocumentShape.superRefine(checkIdentities)

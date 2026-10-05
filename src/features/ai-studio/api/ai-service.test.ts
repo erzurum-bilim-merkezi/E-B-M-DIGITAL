@@ -1,4 +1,4 @@
-import type { Step } from '@/entities/kit'
+import { checkPageHtml, type Step } from '@/entities/kit'
 import { isAppError } from '@/shared/api/errors'
 import { MINIMAL_SEED, seedMockBackend, signInAs } from '@/test/mock-backend'
 
@@ -11,6 +11,8 @@ const scene = (prompt: string) => ({
   states: ['before', 'after', 'static'],
   prompt,
 })
+
+const page = (prompt: string, title = 'Sayfa') => ({ prompt, title, ageMin: 7, ageMax: 11 })
 
 /** Option labels of the question cards, in the order a child sees them. */
 function optionLabels(steps: readonly Step[]) {
@@ -141,6 +143,35 @@ describe('AI service (fake provider, ADR 0018)', () => {
     expect(optionLabels(first.steps)).toEqual(optionLabels(second.steps))
   })
 
+  it('drafts an interactive page that passes the page check and counts towards the quota', async () => {
+    const stages: string[] = []
+    const draft = await aiService.draftPage(page('Ay’ın Dünya çevresindeki turu', 'Dünya ve Ay'), {
+      onProgress: (progress) => stages.push(progress.stage),
+    })
+
+    expect(draft.title).toBe('Dünya ve Ay')
+    expect(draft.html).toMatch(/^<!doctype html>/)
+    expect(draft.html).toContain('<title>Dünya ve Ay</title>')
+    expect(checkPageHtml(draft.html)).toEqual([])
+    expect(stages).toEqual(['queued', 'drawing', 'checking', 'done'])
+    expect((await aiService.quota()).userUsed).toBe(1)
+  })
+
+  it('refuses page requests the other drafts refuse, and never lets a malicious page through', async () => {
+    const pii = page('Bana ayse@ornek.com adresinden yaz')
+    expect((await failure(aiService.draftPage(pii))).code).toBe('validation')
+    const filtered = page(`deney ${FAKE_TRIGGERS.filter}`)
+    expect((await failure(aiService.draftPage(filtered))).code).toBe('validation')
+    const slow = page(`deney ${FAKE_TRIGGERS.timeout}`)
+    expect((await failure(aiService.draftPage(slow))).code).toBe('unavailable')
+    const malicious = await failure(aiService.draftPage(page(`sayfa ${FAKE_TRIGGERS.malicious}`)))
+    expect(malicious.code).toBe('validation')
+    expect(malicious.message).toMatch(/sayfa güvenlik kontrolünden geçemedi/)
+    // Refused page attempts count — the provider was asked (20261005120000_ai_page_kind.sql). A
+    // request with personal data never reached it and a timed-out one is an error: neither counts.
+    expect((await aiService.quota()).userUsed).toBe(2)
+  })
+
   it('generates icons and stores one in the media library', async () => {
     const icons = await aiService.generateIcons('roket')
     expect(icons.length).toBeGreaterThan(0)
@@ -155,6 +186,7 @@ describe('AI service (fake provider, ADR 0018)', () => {
 
     await aiService.generateIcons('yıldız')
     expect((await failure(aiService.generateIcons('ay'))).code).toBe('quota')
+    expect((await failure(aiService.draftPage(page('Ay')))).code).toBe('quota')
   })
 
   it('is unavailable when the provider is switched off', async () => {
@@ -162,6 +194,7 @@ describe('AI service (fake provider, ADR 0018)', () => {
     signInAs('editor')
 
     expect((await failure(aiService.generateIcons('güneş'))).code).toBe('not_found')
+    expect((await failure(aiService.draftPage(page('Güneş')))).code).toBe('not_found')
     expect((await aiService.quota()).provider).toBe('off')
   })
 

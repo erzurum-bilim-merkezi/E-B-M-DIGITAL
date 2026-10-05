@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 
-import { AiKitDraftForm, useAiEnabled } from '@/features/ai-studio'
+import { AiKitDraftForm, AiPageDraftForm, useAiEnabled } from '@/features/ai-studio'
 import { KitWizard } from '@/features/studio-kits'
 import { PageHeader } from '@/shared/ui'
 
@@ -20,11 +20,12 @@ export function KitCreatePage() {
       </Link>
       <PageHeader
         title="Yeni Kâşif Kiti"
-        description="Şablonla başlayın ya da yapay zekâyla bir taslak hazırlayın; kartları sonra düzenlersiniz."
+        description="Şablonla, yapay zekâ taslağıyla ya da etkileşimli bir sayfayla başlayın; kartları sonra düzenlersiniz."
       />
       <KitWizard
         onCreated={(kitId) => navigate(`/studio/kitler/${kitId}?sekme=kartlar`, { replace: true })}
         AiDraft={aiEnabled ? AiKitDraftForm : undefined}
+        AiPageDraft={aiEnabled ? AiPageDraftForm : undefined}
       />
     </div>
   )

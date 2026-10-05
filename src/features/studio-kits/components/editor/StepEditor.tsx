@@ -47,6 +47,7 @@ function withVisual(step: Step, visual: Visual | undefined): Step {
     case 'sequence':
     case 'matching':
     case 'experiment':
+    case 'interactive-page':
       return step
     default:
       return { ...step, visual }
@@ -205,7 +206,7 @@ export function StepEditor({ kit, step, issues, slugLocked, onChange }: StepEdit
 
       <Card className="flex flex-col gap-5 p-5">
         <BlockHelp type={step.type} />
-        <BlockFieldsEditor step={step} onChange={onChange} issueFor={issueFor} />
+        <BlockFieldsEditor step={step} onChange={onChange} issueFor={issueFor} kit={kit} />
       </Card>
     </div>
   )

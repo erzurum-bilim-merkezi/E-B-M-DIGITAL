@@ -1,7 +1,12 @@
 /* oxlint-disable no-await-in-loop -- database calls run one after another */
+import { readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { dbError, setupTestDb } from './harness.ts'
 
 const db = setupTestDb()
+
+const MIGRATIONS = fileURLToPath(new URL('../../migrations', import.meta.url))
 
 const PUBLIC_TABLES = [
   'profiles',
@@ -129,5 +134,14 @@ describe('security model', () => {
 
   it('answers the keep-alive ping without a session', async () => {
     expect(await db().as({ kind: 'anon' }).rpc('ping')).toBe('pong')
+  })
+
+  it('reports the newest migration as the schema version (ADR 0019, deploy order)', async () => {
+    // What db-migrate and deploy compare: the timestamp of the newest migration file.
+    const newest = readdirSync(MIGRATIONS)
+      .filter((file) => file.endsWith('.sql'))
+      .toSorted()
+      .at(-1)
+    expect(await db().as({ kind: 'anon' }).rpc('schema_version')).toBe(newest?.split('_')[0])
   })
 })

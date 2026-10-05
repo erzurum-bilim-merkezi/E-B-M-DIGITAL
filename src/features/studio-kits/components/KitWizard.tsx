@@ -1,12 +1,22 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight, Check, Sparkles } from 'lucide-react'
-import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import {
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 
 import {
+  checkPageUrl,
+  createKitFromTemplate,
   KIT_CATEGORIES,
   KIT_CATEGORY_LABELS,
   KIT_TEMPLATE_IDS,
   KIT_TEMPLATES,
+  PAGE_URL_MESSAGES,
   qrPrefixSchema,
   slugDraftTr,
   slugifyTr,
@@ -17,14 +27,18 @@ import {
   type KitDocument,
   type KitIcon,
   type KitTemplateId,
+  type PageSource,
+  type Step,
 } from '@/entities/kit'
 import { errorMessage } from '@/shared/api/errors'
 import { cn } from '@/shared/lib/cn'
 import { handleRovingKeys, rovingTabIndex } from '@/shared/lib/roving-focus'
-import { Alert, Button, Card, Field, Input } from '@/shared/ui'
+import { Alert, Button, Card, Field, Input, SegmentedControl } from '@/shared/ui'
 
 import { allKitsQueryOptions, takenQrPrefixesQueryOptions, useCreateKit } from '../api/queries'
+import type { AiPageDraftProps } from './editor/editor-services'
 import { EmojiField, NumberField, RichTextField, SelectField, TextField } from './editor/fields'
+import { PagePreview } from './PagePreview'
 
 type AiDraftDocument = Omit<KitDocument, 'id' | 'slug' | 'qrPrefix'>
 
@@ -34,7 +48,17 @@ export type AiKitDraftComponent = (props: {
 }) => ReactNode
 
 type Choice =
-  { kind: 'template'; id: KitTemplateId } | { kind: 'ai'; document: AiDraftDocument | null }
+  | { kind: 'template'; id: KitTemplateId }
+  | { kind: 'ai'; document: AiDraftDocument | null }
+  | { kind: 'page' }
+
+/** "Etkileşimli sayfa" (ADR 0023): an AI page or a link; kept while other cards are tried. */
+type PageChoice = { mode: 'ai' | 'url'; prompt: string; html: string; url: string }
+
+const PAGE_MODES = [
+  { value: 'ai', label: 'Yapay zekâyla tasarla' },
+  { value: 'url', label: 'Hazır bağlantı' },
+] as const satisfies readonly { value: PageChoice['mode']; label: string }[]
 
 const STEPS = ['Başlangıç', 'Ad ve QR', 'Ayrıntılar'] as const
 const TITLE_ID = 'wizard-title'
@@ -81,12 +105,22 @@ function StepIndicator({ current }: { current: number }) {
 export function KitWizard({
   onCreated,
   AiDraft,
+  AiPageDraft,
 }: {
   onCreated: (kitId: string) => void
   AiDraft?: AiKitDraftComponent | undefined
+  /** Interactive page by AI (injected by the page when the AI provider is on). */
+  AiPageDraft?: ComponentType<AiPageDraftProps> | undefined
 }) {
   const [step, setStep] = useState(0)
   const [choice, setChoice] = useState<Choice>({ kind: 'template', id: 'discovery' })
+  const [page, setPage] = useState<PageChoice>({ mode: 'ai', prompt: '', html: '', url: '' })
+  // Without the AI provider only a link is possible.
+  const pageMode = AiPageDraft ? page.mode : 'url'
+  const pageUrlProblem = checkPageUrl(page.url, window.location.origin)
+  // A wrong link shows while typing; a missing one only once "Devam" was pressed.
+  const [pageSubmitted, setPageSubmitted] = useState(false)
+  const pageUrlInput = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('')
   const [slug, setSlug] = useState('')
   const [prefix, setPrefix] = useState('')
@@ -133,7 +167,12 @@ export function KitWizard({
 
   // The field may end with "-" while typing; checks and creation use the finished address.
   const finalSlug = slugifyTr(slug)
-  const titleProblem = title.trim().length < 3 ? 'Kit adı en az 3 karakter olmalı.' : undefined
+  const titleProblem =
+    title.trim().length < 3
+      ? 'Kit adı en az 3 karakter olmalı.'
+      : title.trim().length > 60
+        ? 'Kit adı en fazla 60 karakter olabilir.'
+        : undefined
   const slugProblem = !finalSlug
     ? 'Kitin adresini girin.'
     : !slugSchema.safeParse(finalSlug).success
@@ -160,6 +199,16 @@ export function KitWizard({
         setProblem('Önce yapay zekâ taslağını oluşturun ya da bir şablon seçin.')
         return
       }
+      if (choice.kind === 'page' && pageMode === 'ai' && !page.html) {
+        setProblem('Önce sayfayı yapay zekâyla tasarlayın ya da hazır bir bağlantı verin.')
+        return
+      }
+      if (choice.kind === 'page' && pageMode === 'url' && pageUrlProblem) {
+        // The error sits on the field (aria-invalid + description); focus goes there.
+        setPageSubmitted(true)
+        pageUrlInput.current?.focus()
+        return
+      }
       goTo(1)
       return
     }
@@ -173,9 +222,11 @@ export function KitWizard({
       return
     }
     const kitIcon: KitIcon = { kind: 'emoji', value: icon || '🧪' }
+    const ageRange = { min: Math.min(ageMin, ageMax), max: Math.max(ageMin, ageMax) }
     create.mutate(
       {
-        templateId: choice.kind === 'template' ? choice.id : 'blank',
+        templateId:
+          choice.kind === 'template' ? choice.id : choice.kind === 'page' ? 'page' : 'blank',
         title: title.trim(),
         slug: finalSlug,
         qrPrefix: prefix,
@@ -197,9 +248,25 @@ export function KitWizard({
                 description,
                 category,
                 icon: kitIcon,
-                ageRange: { min: Math.min(ageMin, ageMax), max: Math.max(ageMin, ageMax) },
+                ageRange,
                 durationMinutes: duration,
               },
+            }
+          : {}),
+        ...(choice.kind === 'page'
+          ? {
+              document: pageKitDocument({
+                id: crypto.randomUUID(),
+                title: title.trim(),
+                slug: finalSlug,
+                qrPrefix: prefix,
+                tagline,
+                description,
+                category,
+                ageRange,
+                durationMinutes: duration,
+                icon: kitIcon,
+              }),
             }
           : {}),
       },
@@ -207,13 +274,36 @@ export function KitWizard({
     )
   }
 
+  /** One interactive-page card titled like the kit, holding the AI page or the link. */
+  const pageKitDocument = (input: Parameters<typeof createKitFromTemplate>[1]): KitDocument => {
+    const source: PageSource =
+      pageMode === 'ai'
+        ? { kind: 'html', prompt: page.prompt, html: page.html }
+        : { kind: 'url', url: page.url.trim() }
+    const kit = createKitFromTemplate('page', input)
+    const [card] = kit.steps
+    if (card?.type !== 'interactive-page') return kit
+    const filled: Step = {
+      ...card,
+      title: input.title,
+      source,
+      ...(pageMode === 'ai' ? { aiGenerated: { fields: ['page'] } } : {}),
+    }
+    return { ...kit, steps: [filled] }
+  }
+
+  const choosePage = () => {
+    setChoice({ kind: 'page' })
+    if (icon === '🧪') setIcon('🌍')
+  }
+
   // Roving tab stop of the template radio group (the AI card sits after the templates).
   const selectedTemplateIndex =
     choice.kind === 'template'
       ? KIT_TEMPLATE_IDS.indexOf(choice.id)
-      : choice.kind === 'ai'
-        ? KIT_TEMPLATE_IDS.length
-        : -1
+      : choice.kind === 'page'
+        ? KIT_TEMPLATE_IDS.indexOf('page')
+        : KIT_TEMPLATE_IDS.length
 
   return (
     <form noValidate onSubmit={next} className="flex flex-col gap-6">
@@ -237,7 +327,10 @@ export function KitWizard({
           >
             {KIT_TEMPLATE_IDS.map((id, index) => {
               const meta = KIT_TEMPLATES[id]
-              const selected = choice.kind === 'template' && choice.id === id
+              const selected =
+                id === 'page'
+                  ? choice.kind === 'page'
+                  : choice.kind === 'template' && choice.id === id
               return (
                 <button
                   key={id}
@@ -246,7 +339,9 @@ export function KitWizard({
                   role="radio"
                   aria-checked={selected}
                   tabIndex={rovingTabIndex(index, selectedTemplateIndex)}
-                  onClick={() => setChoice({ kind: 'template', id })}
+                  onClick={() =>
+                    id === 'page' ? choosePage() : setChoice({ kind: 'template', id })
+                  }
                   className={cn(
                     'flex h-full flex-col items-start gap-2 rounded-lg border bg-surface p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                     selected
@@ -320,6 +415,78 @@ export function KitWizard({
                   Taslak hazır: {choice.document.steps.length} kart. Devam ederek adını ve adresini
                   belirleyin.
                 </output>
+              )}
+            </Card>
+          )}
+          {choice.kind === 'page' && (
+            <Card className="flex flex-col gap-5 p-5">
+              {AiPageDraft ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-medium">Sayfa nereden gelsin?</p>
+                  <SegmentedControl
+                    label="Sayfa nereden gelsin?"
+                    value={pageMode}
+                    onValueChange={(mode) => setPage({ ...page, mode })}
+                    options={PAGE_MODES}
+                    className="self-start"
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-fg-muted">
+                  Yapay zekâ kapalı: hazır bir bağlantı verin. Kendi HTML sayfanızı kit
+                  oluşturulduktan sonra kartın editöründe de ekleyebilirsiniz.
+                </p>
+              )}
+              {pageMode === 'ai' && AiPageDraft ? (
+                <>
+                  <AiPageDraft
+                    title=""
+                    hasPage={page.html.length > 0}
+                    initialPrompt={page.prompt}
+                    onDrafted={(draft) => {
+                      setPage({ ...page, prompt: draft.prompt, html: draft.html })
+                      // The AI may name the page up to 80 characters; a kit's name has 60.
+                      if (!title.trim()) changeTitle(draft.title.slice(0, 60).trim())
+                      setAgeMin(draft.ageRange.min)
+                      setAgeMax(draft.ageRange.max)
+                    }}
+                  />
+                  {page.html && (
+                    <output className="block text-sm text-success-fg">
+                      Sayfa hazır. Önizlemede deneyin, sonra devam ederek adını ve adresini
+                      belirleyin.
+                    </output>
+                  )}
+                  <PagePreview
+                    source={{ kind: 'html', prompt: page.prompt, html: page.html }}
+                    title={title.trim() || 'Etkileşimli sayfa'}
+                  />
+                </>
+              ) : (
+                <>
+                  <Field
+                    label="Sayfanın bağlantısı"
+                    description="Yalnızca https. Çocuklara uygun, reklamsız bir sayfa seçin; site kendi çerezlerini kullanabilir."
+                    error={
+                      (page.url.trim() || pageSubmitted) && pageUrlProblem
+                        ? PAGE_URL_MESSAGES[pageUrlProblem]
+                        : undefined
+                    }
+                  >
+                    <Input
+                      ref={pageUrlInput}
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://"
+                      value={page.url}
+                      onChange={(event) => setPage({ ...page, url: event.target.value })}
+                    />
+                  </Field>
+                  <PagePreview
+                    source={{ kind: 'url', url: page.url }}
+                    title={title.trim() || 'Etkileşimli sayfa'}
+                  />
+                </>
               )}
             </Card>
           )}

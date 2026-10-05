@@ -1,10 +1,11 @@
 // ai-generate (ADR 0018): the Studio's AI assistance — card texts, kit drafts, scene and icon
-// SVGs — and storing the chosen drawings in the media library. Only active staff get past the
-// first step: ai_quota() runs with the caller's own JWT and raises for everyone else. The provider
-// is Gemini (free tier; the key is the GEMINI_API_KEY secret only) or the deterministic fake, as
-// both the AI_PROVIDER secret and the admin's setting allow. Every generation attempt is recorded
-// in ai_usage; only successful ones count towards the daily quota. Drawings are checked with the
-// app's own contract (checkAiSvg) and rejected, never repaired. Prompts and keys are never logged.
+// SVGs, interactive three.js pages (ADR 0023) — and storing the chosen drawings in the media
+// library. Only active staff get past the first step: ai_quota() runs with the caller's own JWT
+// and raises for everyone else. The provider is Gemini (free tier; the key is the GEMINI_API_KEY
+// secret only) or the deterministic fake, as both the AI_PROVIDER secret and the admin's setting
+// allow. Every generation attempt is recorded in ai_usage; only successful ones count towards the
+// daily quota. Drawings and pages are checked with the app's own contracts (checkAiSvg,
+// checkPageHtml) and rejected, never repaired. Prompts and keys are never logged.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 
@@ -12,11 +13,14 @@ import {
   BLOCK_CATALOG,
   BLOCK_TYPES,
   checkAiSvg,
+  checkPageHtml,
   findPii,
   KIT_CATEGORIES,
   sceneStateSchema,
   svgDescription,
   AI_ICON_MAX_BYTES,
+  MAX_PAGE_HTML,
+  MAX_PAGE_PROMPT,
   type BlockType,
 } from '../_shared/entities/kit/index.ts'
 import { createFakeProvider } from '../_shared/fake-ai.ts'
@@ -80,6 +84,13 @@ const bodySchema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('icons'), concept: z.string().trim().min(1).max(120) }),
   z.object({
+    action: z.literal('page'),
+    prompt: z.string().trim().min(1).max(MAX_PAGE_PROMPT),
+    title: z.string().trim().min(1).max(80),
+    ageMin: age,
+    ageMax: age,
+  }),
+  z.object({
     action: z.literal('save-scene'),
     suggestion: z.object({
       alt: z.string().max(1000),
@@ -94,7 +105,7 @@ const bodySchema = z.discriminatedUnion('action', [
 ])
 
 type Body = z.infer<typeof bodySchema>
-type GenerationBody = Extract<Body, { action: 'card-text' | 'kit' | 'scene' | 'icons' }>
+type GenerationBody = Extract<Body, { action: 'card-text' | 'kit' | 'scene' | 'icons' | 'page' }>
 
 const quotaSchema = z.object({
   provider: z.enum(['gemini', 'fake', 'off']),
@@ -126,6 +137,8 @@ const MESSAGES = {
   sceneRejected:
     'Üretilen çizim güvenlik kontrolünden geçemedi ve reddedildi. Farklı bir istem deneyin.',
   iconRejected: 'Üretilen ikon güvenlik kontrolünden geçemedi.',
+  pageRejected:
+    'Üretilen sayfa güvenlik kontrolünden geçemedi ve reddedildi. Farklı bir istem deneyin.',
   sceneUnsafe: 'Sahne güvenlik kontrolünden geçemedi.',
   iconUnsafe: 'İkon güvenlik kontrolünden geçemedi.',
   providerQuota:
@@ -195,6 +208,10 @@ function isSafeIcon(markup: string) {
   )
 }
 
+function isSafePage(html: string) {
+  return html.length <= MAX_PAGE_HTML && checkPageHtml(html).length === 0
+}
+
 function block(type: BlockType) {
   const meta = BLOCK_CATALOG[type]
   return { blockType: type, blockLabel: meta.label, blockDescription: meta.description }
@@ -211,10 +228,18 @@ function promptText(body: GenerationBody) {
       return `${body.prompt} ${body.title} ${body.answer}`
     case 'icons':
       return body.concept
+    case 'page':
+      return `${body.prompt} ${body.title}`
   }
 }
 
-const USAGE_KIND = { 'card-text': 'text', kit: 'kit', scene: 'scene', icons: 'icon' } as const
+const USAGE_KIND = {
+  'card-text': 'text',
+  kit: 'kit',
+  scene: 'scene',
+  icons: 'icon',
+  page: 'page',
+} as const
 
 /**
  * Reserves one generation in the database before the provider is called (ai_reserve counts
@@ -354,6 +379,26 @@ async function run(
       if (icons.length === 0) throw new AiProviderError('rejected', result.model)
       return { answer: { icons }, results: [result] }
     }
+    case 'page': {
+      const result = await provider.page(
+        { prompt: body.prompt, title: body.title, ageMin: body.ageMin, ageMax: body.ageMax },
+        signal,
+      )
+      if (!isSafePage(result.value.html)) throw new AiProviderError('rejected', result.model)
+      return { answer: { title: result.value.title, html: result.value.html }, results: [result] }
+    }
+  }
+}
+
+/** What the Studio reads when the output failed our checks. */
+function rejectedMessage(action: GenerationBody['action']) {
+  switch (action) {
+    case 'icons':
+      return MESSAGES.iconRejected
+    case 'page':
+      return MESSAGES.pageRejected
+    default:
+      return MESSAGES.sceneRejected
   }
 }
 
@@ -363,12 +408,7 @@ function failureOf(error: AiProviderError, action: GenerationBody['action']) {
     case 'blocked':
       return { status: 'blocked' as const, failure: failures.validation(MESSAGES.filter) }
     case 'rejected':
-      return {
-        status: 'blocked' as const,
-        failure: failures.validation(
-          action === 'icons' ? MESSAGES.iconRejected : MESSAGES.sceneRejected,
-        ),
-      }
+      return { status: 'blocked' as const, failure: failures.validation(rejectedMessage(action)) }
     case 'timeout':
       return { status: 'error' as const, failure: failures.unavailable(MESSAGES.timeout) }
     case 'quota':

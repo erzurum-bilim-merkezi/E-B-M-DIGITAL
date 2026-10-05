@@ -2,6 +2,7 @@ import type { BlockType, Step } from '@/entities/kit'
 
 import { ChooseCorrectBlock, CompareCardsBlock, QuizBlock } from './ChoiceBlocks'
 import { ExperimentBlock } from './ExperimentBlock'
+import { InteractivePageBlock } from './InteractivePageBlock'
 import { MatchingBlock, SequenceBlock } from './PuzzleBlocks'
 import {
   AnimatedSceneBlock,
@@ -45,5 +46,7 @@ export function StepRenderer({ step, ...props }: RenderProps) {
       return <ExperimentBlock step={step} {...props} />
     case 'video':
       return <VideoBlock step={step} {...props} />
+    case 'interactive-page':
+      return <InteractivePageBlock step={step} {...props} />
   }
 }

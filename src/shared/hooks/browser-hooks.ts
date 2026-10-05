@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 function subscribeOnline(listener: () => void) {
   window.addEventListener('online', listener)
@@ -148,4 +148,15 @@ export function useDebouncedCallback<A extends unknown[]>(
   )
   const cancel = useCallback(() => window.clearTimeout(timer.current), [])
   return { run, cancel }
+}
+
+/** `value` once it stopped changing for `delayMs`; the value itself when `delayMs` is 0. */
+export function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    if (delayMs <= 0) return
+    const timer = window.setTimeout(() => setSettled(value), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [value, delayMs])
+  return delayMs <= 0 ? value : settled
 }

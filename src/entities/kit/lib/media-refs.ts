@@ -49,6 +49,8 @@ function mapStep(step: Step, visit: RefVisitor): Step {
     case 'compare-cards':
     case 'sequence':
     case 'matching':
+    // A page holds no media library references: its HTML is self-contained, a link is external.
+    case 'interactive-page':
       return { ...step, ...common }
     default:
       return { ...step, ...common, visual: mapVisual(step.visual, visit) }

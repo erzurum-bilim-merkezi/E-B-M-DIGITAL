@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import { AiScenePanel, AiTextButton, useAiEnabled } from '@/features/ai-studio'
+import { AiPageDraftForm, AiScenePanel, AiTextButton, useAiEnabled } from '@/features/ai-studio'
 import {
   AudioField,
   CaptionsField,
@@ -43,6 +43,7 @@ export function useComposedEditorServices(): EditorServices {
       CaptionsField,
       AiScenePanel: aiEnabled ? AiScenePanel : undefined,
       AiTextButton: aiEnabled ? AiTextButton : undefined,
+      AiPageDraft: aiEnabled ? AiPageDraftForm : undefined,
       assets,
       Preview: (props) => <ResolvedPreview {...props} assets={assets} />,
       SceneThumb,

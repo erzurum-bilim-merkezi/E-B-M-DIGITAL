@@ -1,9 +1,9 @@
-import { BLOK_VITRINI } from '@/entities/kit'
+import { BLOK_VITRINI, PAGE_URL_MESSAGES, samplePageHtml } from '@/entities/kit'
 import { mockControl } from '@/shared/api/mock-db'
 import { MINIMAL_SEED, seedMockBackend, signInAs } from '@/test/mock-backend'
 import { renderWithProviders, screen, waitFor, within } from '@/test/test-utils'
 
-import { kitRepository, KitWizard, type AiKitDraftComponent } from '../index'
+import { kitRepository, KitWizard, type AiKitDraftComponent, type AiPageDraftProps } from '../index'
 
 const {
   id: _id,
@@ -27,10 +27,32 @@ const FakeAiDraft: AiKitDraftComponent = ({ onDrafted }) => (
   </button>
 )
 
+const PAGE_HTML = samplePageHtml('Dünya ve Ay')
+
+const FakeAiPageDraft = ({ onDrafted }: AiPageDraftProps) => (
+  <button
+    type="button"
+    onClick={() =>
+      onDrafted({
+        title: 'Dünya ve Ay',
+        html: PAGE_HTML,
+        prompt: 'Dünya ile Ay',
+        ageRange: { min: 8, max: 12 },
+      })
+    }
+  >
+    Sayfayı tasarla
+  </button>
+)
+
 function renderWizard({ ai = false }: { ai?: boolean } = {}) {
   const onCreated = vi.fn<(kitId: string) => void>()
   const view = renderWithProviders(
-    <KitWizard onCreated={onCreated} AiDraft={ai ? FakeAiDraft : undefined} />,
+    <KitWizard
+      onCreated={onCreated}
+      AiDraft={ai ? FakeAiDraft : undefined}
+      AiPageDraft={ai ? FakeAiPageDraft : undefined}
+    />,
   )
   return { ...view, onCreated }
 }
@@ -307,6 +329,111 @@ describe('KitWizard', () => {
       })
       expect(kit.draft.steps).toHaveLength(BLOK_VITRINI.steps.length)
       expect(kit.draft.steps.every((step) => step.qrCode.startsWith('KH-'))).toBe(true)
+    })
+  })
+
+  describe('interactive page', () => {
+    it('asks for an https link when the AI provider is off', async () => {
+      const { user, onCreated } = renderWizard()
+      await user.click(screen.getByRole('radio', { name: /^Etkileşimli sayfa/ }))
+      expect(screen.queryByRole('group', { name: 'Sayfa nereden gelsin?' })).not.toBeInTheDocument()
+
+      await next(user)
+      const link = screen.getByRole('textbox', { name: /^Sayfanın bağlantısı/ })
+      // The error sits on the field, which takes the focus — not a second alert above the form.
+      expect(link).toHaveFocus()
+      expect(link).toHaveAccessibleDescription(expect.stringContaining(PAGE_URL_MESSAGES.empty))
+      expect(screen.getAllByText(PAGE_URL_MESSAGES.empty)).toHaveLength(1)
+      await user.type(link, 'http://phet.colorado.edu/a.html')
+      expect(link).toHaveAccessibleDescription(
+        expect.stringContaining(PAGE_URL_MESSAGES['not-https']),
+      )
+      await user.clear(link)
+      await user.paste('https://phet.colorado.edu/a_tr.html')
+      // Nothing is loaded from the site until asked.
+      expect(screen.queryByTitle(/^Önizleme/)).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Sayfayı önizle' }))
+      expect(screen.getByTitle(/^Önizleme/)).toHaveAttribute(
+        'src',
+        'https://phet.colorado.edu/a_tr.html',
+      )
+
+      await next(user)
+      await user.click(screen.getByRole('textbox', { name: 'Kit adı' }))
+      await user.paste('Yerçekimi')
+      await next(user)
+      await user.click(screen.getByRole('button', { name: 'Oluştur ve kartları ekle' }))
+
+      await waitFor(() => expect(onCreated).toHaveBeenCalledOnce())
+      const kit = await kitRepository.get(onCreated.mock.calls[0]![0])
+      expect(kit.draft.icon).toEqual({ kind: 'emoji', value: '🌍' })
+      expect(kit.draft.steps).toHaveLength(1)
+      expect(kit.draft.steps[0]).toMatchObject({
+        type: 'interactive-page',
+        title: 'Yerçekimi',
+        qrCode: 'YE-01',
+        source: { kind: 'url', url: 'https://phet.colorado.edu/a_tr.html' },
+      })
+      expect(kit.draft.steps[0]?.aiGenerated).toBeUndefined()
+    })
+
+    it('designs the page with AI first, previews it and names the kit after it', async () => {
+      const { user, onCreated } = renderWizard({ ai: true })
+      await user.click(screen.getByRole('radio', { name: /^Etkileşimli sayfa/ }))
+      expect(screen.getByRole('radio', { name: 'Yapay zekâyla tasarla' })).toBeChecked()
+
+      await next(user)
+      expect(screen.getByRole('alert')).toHaveTextContent('Önce sayfayı yapay zekâyla tasarlayın')
+      await user.click(screen.getByRole('button', { name: 'Sayfayı tasarla' }))
+      expect(screen.getByText(/^Sayfa hazır. Önizlemede/)).toBeInTheDocument()
+      expect(screen.getByTitle('Önizleme: Dünya ve Ay')).toHaveAttribute('sandbox', 'allow-scripts')
+      // Trying another start and coming back keeps the page.
+      await user.click(screen.getByRole('radio', { name: /^Quiz kiti/ }))
+      await user.click(screen.getByRole('radio', { name: /^Etkileşimli sayfa/ }))
+      expect(screen.getByText(/^Sayfa hazır. Önizlemede/)).toBeInTheDocument()
+
+      await next(user)
+      expect(screen.getByRole('textbox', { name: 'Kit adı' })).toHaveValue('Dünya ve Ay')
+      await next(user)
+      // The ages the page was made for become the kit's.
+      expect(screen.getByRole('spinbutton', { name: 'En küçük yaş' })).toHaveValue(8)
+      expect(screen.getByRole('spinbutton', { name: 'En büyük yaş' })).toHaveValue(12)
+      await user.click(screen.getByRole('button', { name: 'Oluştur ve kartları ekle' }))
+
+      await waitFor(() => expect(onCreated).toHaveBeenCalledOnce())
+      const kit = await kitRepository.get(onCreated.mock.calls[0]![0])
+      expect(kit.draft.steps).toHaveLength(1)
+      expect(kit.draft.steps[0]).toMatchObject({
+        type: 'interactive-page',
+        title: 'Dünya ve Ay',
+        source: { kind: 'html', prompt: 'Dünya ile Ay', html: PAGE_HTML },
+        aiGenerated: { fields: ['page'] },
+      })
+      expect(kit.draft.ageRange).toEqual({ min: 8, max: 12 })
+    })
+
+    it('fits a long AI title into the 60 characters of a kit name', async () => {
+      const long = 'Güneş Sistemi: gezegenler, uydular ve yörüngeleriyle büyük bir keşif yolculuğu'
+      const LongTitle = ({ onDrafted }: AiPageDraftProps) => (
+        <button
+          type="button"
+          onClick={() =>
+            onDrafted({ title: long, html: PAGE_HTML, prompt: 'x', ageRange: { min: 7, max: 10 } })
+          }
+        >
+          Sayfayı tasarla
+        </button>
+      )
+      const { user } = renderWithProviders(
+        <KitWizard onCreated={vi.fn<(kitId: string) => void>()} AiPageDraft={LongTitle} />,
+      )
+      await user.click(screen.getByRole('radio', { name: /^Etkileşimli sayfa/ }))
+      await user.click(screen.getByRole('button', { name: 'Sayfayı tasarla' }))
+      await next(user)
+
+      const name = screen.getByRole('textbox', { name: 'Kit adı' })
+      expect(name).toHaveValue(long.slice(0, 60).trim())
+      expect(long.length).toBeGreaterThan(60)
     })
   })
 })

@@ -3,22 +3,25 @@ import { z } from 'zod'
 import {
   aiSceneStateSchema,
   checkAiSvg,
+  checkPageHtml,
   kitCategorySchema,
   AI_ICON_MAX_BYTES,
+  MAX_PAGE_HTML,
 } from '@/entities/kit'
 import { appSettingsSchema, mediaAssetSchema, type MediaAsset } from '@/entities/studio'
 import { AppError } from '@/shared/api/errors'
 import { mediaObjectUrl, staffClient, toAppError, unwrap } from '@/shared/api/supabase'
 
 import { AI_TIMEOUT_MS, composeKit, kitBlockTypes } from './compose'
-import type { AiQuota, AiService, AiStage, RunOptions } from './port'
+import type { AiQuota, AiService, AiStage, PageDraft, RunOptions } from './port'
 
 /*
  * AI assistance on Supabase (ADR 0018): the `ai-generate` Edge Function calls the provider
  * (Gemini free tier, or the deterministic fake on the local stack), checks the caller, the
  * personal-data rule and the daily quota, and records every attempt. The key never leaves the
  * function's secrets. Drafts come back as plain texts and are composed into cards here with the
- * same code as the mock (compose.ts); SVGs are checked again before anything is shown or saved.
+ * same code as the mock (compose.ts); SVGs and pages are checked again before anything is shown
+ * or saved.
  */
 
 const FUNCTION = 'ai-generate'
@@ -71,6 +74,11 @@ const kitDraftSchema = z.object({
   cards: z.array(cardTextSchema),
 })
 
+const pageDraftSchema = z.object({
+  title: z.string().max(80),
+  html: z.string().max(MAX_PAGE_HTML),
+}) satisfies z.ZodType<PageDraft>
+
 const mediaRowSchema = mediaAssetSchema.omit({ url: true }).extend({ path: z.string() })
 
 /** The function's error answer (`errorResponse` of supabase/functions/_shared/http.ts). */
@@ -84,6 +92,7 @@ const MESSAGES = {
   timeout: 'Yapay zekâ 120 saniye içinde yanıt vermedi. Tekrar deneyin.',
   scene: 'Üretilen çizim güvenlik kontrolünden geçemedi ve reddedildi. Farklı bir istem deneyin.',
   icon: 'Üretilen ikon güvenlik kontrolünden geçemedi.',
+  page: 'Üretilen sayfa güvenlik kontrolünden geçemedi ve reddedildi. Farklı bir istem deneyin.',
   savedScene: 'Sahne güvenlik kontrolünden geçemedi.',
   savedIcon: 'İkon güvenlik kontrolünden geçemedi.',
 }
@@ -250,6 +259,20 @@ export function createSupabaseAiService(): AiService {
             .extend({ cards: kitDraftSchema.shape.cards.length(blockTypes.length) })
             .parse(data)
           return composeKit(request, kit, cards)
+        },
+        { checking: true },
+      )
+    },
+
+    async draftPage(request, options) {
+      return generate(
+        { action: 'page', ...request },
+        options,
+        (data) => {
+          const page = pageDraftSchema.parse(data)
+          // Defence in depth: the function already rejected unsafe pages.
+          if (checkPageHtml(page.html).length > 0) throw new AppError('validation', MESSAGES.page)
+          return page
         },
         { checking: true },
       )

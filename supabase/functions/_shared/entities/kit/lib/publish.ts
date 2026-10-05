@@ -3,8 +3,8 @@ import type { Catalog, CatalogEntry, QrIndex } from '../model/catalog.ts'
 import type { KitDocument } from '../model/kit.ts'
 import type { KitVersion, QrCodeRow, StudioKit } from '../model/studio.ts'
 
-/** Bumped when a new snapshot format needs a newer app (ADR 0019). */
-export const MIN_APP_VERSION = 1
+/** Bumped when a new snapshot format needs a newer app (ADR 0019). 2: interactive-page cards (ADR 0023). */
+export const MIN_APP_VERSION = 2
 
 /** The newest finalized version of a kit (any row shape that carries the version fields). */
 /** What the public indexes need of a kit (never its draft: a broken draft cannot stop them). */

@@ -30,6 +30,7 @@ export { KitEditor } from './components/editor/KitEditor'
 export {
   EditorServicesProvider,
   type AiCardText,
+  type AiPageDraftProps,
   type AiSceneVisual,
   type EditorServices,
   type ResolvedAsset,

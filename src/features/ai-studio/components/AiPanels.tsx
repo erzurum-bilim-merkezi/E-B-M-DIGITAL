@@ -23,15 +23,10 @@ import {
 import { aiService } from '../api'
 import { aiQuotaQueryOptions, useRefreshAiQuota, useSaveAiIcon, useSaveScene } from '../api/queries'
 import type { AiProgress, CardTextDraft, KitDraftRequest, SceneSuggestion } from '../api/port'
+import { BoundedNumberField } from './BoundedNumberField'
+import { STAGE_LABELS } from './stage-labels'
 
-const STAGE_LABELS: Record<AiProgress['stage'], string> = {
-  queued: 'Sıraya alındı…',
-  drawing: 'Çiziliyor…',
-  checking: 'Güvenlik kontrolü…',
-  done: 'Hazır',
-}
-
-function QuotaLine() {
+export function QuotaLine() {
   const quota = useQuery(aiQuotaQueryOptions())
   if (!quota.data) return null
   const { userUsed, userLimit, projectUsed, projectLimit, resetsAt } = quota.data
@@ -43,7 +38,7 @@ function QuotaLine() {
   )
 }
 
-function AiError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+export function AiError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   if (error instanceof DOMException && error.name === 'AbortError')
     return <Alert variant="info">Üretim iptal edildi.</Alert>
   const quota = isAppError(error, 'quota')
@@ -571,51 +566,27 @@ export function AiKitDraftForm({
         />
       </Field>
       <div className="grid grid-cols-3 gap-3">
-        <Field label="En küçük yaş">
-          <Input
-            type="number"
-            min={3}
-            max={14}
-            value={request.ageMin}
-            onKeyDown={startOnEnter}
-            onChange={(event) =>
-              setRequest({
-                ...request,
-                ageMin: Math.max(3, Math.min(14, Number(event.target.value) || 3)),
-              })
-            }
-          />
-        </Field>
-        <Field label="En büyük yaş">
-          <Input
-            type="number"
-            min={3}
-            max={14}
-            value={request.ageMax}
-            onKeyDown={startOnEnter}
-            onChange={(event) =>
-              setRequest({
-                ...request,
-                ageMax: Math.max(3, Math.min(14, Number(event.target.value) || 3)),
-              })
-            }
-          />
-        </Field>
-        <Field label="Kart sayısı">
-          <Input
-            type="number"
-            min={2}
-            max={12}
-            value={request.cardCount}
-            onKeyDown={startOnEnter}
-            onChange={(event) =>
-              setRequest({
-                ...request,
-                cardCount: Math.max(2, Math.min(12, Number(event.target.value) || 2)),
-              })
-            }
-          />
-        </Field>
+        <BoundedNumberField
+          label="En küçük yaş"
+          value={request.ageMin}
+          min={3}
+          max={14}
+          onChange={(ageMin) => setRequest((current) => ({ ...current, ageMin }))}
+        />
+        <BoundedNumberField
+          label="En büyük yaş"
+          value={request.ageMax}
+          min={3}
+          max={14}
+          onChange={(ageMax) => setRequest((current) => ({ ...current, ageMax }))}
+        />
+        <BoundedNumberField
+          label="Kart sayısı"
+          value={request.cardCount}
+          min={2}
+          max={12}
+          onChange={(cardCount) => setRequest((current) => ({ ...current, cardCount }))}
+        />
       </div>
       <QuotaLine />
       <Button

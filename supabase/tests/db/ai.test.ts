@@ -35,11 +35,12 @@ async function usage(
   user: Extract<Actor, { kind: 'user' }> | null,
   at: number,
   status: 'ok' | 'blocked' | 'error' = 'ok',
+  kind: 'scene' | 'icon' | 'text' | 'kit' | 'page' = 'scene',
 ) {
   await db().sql(
     `insert into public.ai_usage (user_id, kind, status, provider, model, created_at)
-     values ($1, 'scene', $2, 'gemini', 'gemini-2.5-flash', $3::timestamptz)`,
-    [user?.id ?? null, status, new Date(at).toISOString()],
+     values ($1, $4, $2, 'gemini', 'gemini-2.5-flash', $3::timestamptz)`,
+    [user?.id ?? null, status, new Date(at).toISOString(), kind],
   )
 }
 
@@ -88,6 +89,28 @@ describe('AI quota', () => {
       userUsed: 1,
       projectUsed: 3,
     })
+  })
+
+  it('also counts pages the page check rejected — they cost as much as a page that passed', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const start = await istanbulDayStart()
+    await settings({ aiDailyUserLimit: 2 })
+
+    await usage(editor, start + 60_000, 'blocked', 'page')
+    await usage(editor, start + 120_000, 'blocked', 'scene') // a refused scene still does not
+    await usage(editor, start + 180_000, 'error', 'page') // nor a page that failed to arrive
+
+    expect(await db().as(editor).rpc<Quota>('ai_quota')).toMatchObject({
+      userUsed: 1,
+      projectUsed: 1,
+    })
+    await usage(editor, start + 240_000, 'blocked', 'page')
+    const refused = await dbError(
+      db()
+        .as(SERVICE)
+        .rpc('ai_reserve', { p_user: editor.id, p_kind: 'page', p_provider: 'gemini' }),
+    )
+    expect(refused.code).toBe(KS.quota)
   })
 
   it('follows the platform settings', async () => {
@@ -191,5 +214,34 @@ describe('AI quota reservation (parallel requests)', () => {
       db().as(admin).rpc('ai_reserve', { p_user: admin.id, p_kind: 'text', p_provider: 'fake' }),
     )
     expect(error.code).toBe('42501')
+  })
+})
+
+describe('AI usage kinds', () => {
+  it('records interactive page drafts (ADR 0023) and counts them towards the quota', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const id = await db().as(SERVICE).rpc<string>('ai_reserve', {
+      p_user: editor.id,
+      p_kind: 'page',
+      p_provider: 'fake',
+    })
+    const [row] = await db().sql<{ kind: string; status: string }>(
+      `select kind, status from public.ai_usage where id = $1`,
+      [id],
+    )
+    expect(row).toEqual({ kind: 'page', status: 'pending' })
+
+    await db().sql(`update public.ai_usage set status = 'ok', model = 'fake' where id = $1`, [id])
+    expect(await db().as(editor).rpc<Quota>('ai_quota')).toMatchObject({ userUsed: 1 })
+  })
+
+  it('still refuses a kind the Studio does not know', async () => {
+    const editor = await db().createStaff({ role: 'editor' })
+    const error = await dbError(
+      db()
+        .as(SERVICE)
+        .rpc('ai_reserve', { p_user: editor.id, p_kind: 'video', p_provider: 'fake' }),
+    )
+    expect(error.code).toBe('23514') // check_violation
   })
 })

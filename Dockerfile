@@ -40,6 +40,7 @@ RUN if [ "$VITE_BACKEND" = "supabase" ]; then \
 FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
 COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/docker/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY --from=build /app/docker/nginx/page-runner-headers.conf /etc/nginx/snippets/page-runner-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \

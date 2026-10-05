@@ -40,7 +40,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       expect(findings).toEqual({})
     })
 
-    test('Kâşif: member pages and all 13 card types', async ({ page }) => {
+    test('Kâşif: member pages and all 14 card types', async ({ page }) => {
       test.slow()
       const findings: Findings = {}
       await joinFromHome(page, 'Duru')
@@ -76,7 +76,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
             )
           return cards.length
         })
-        .toBe(13)
+        .toBe(14)
       for (const href of cards) {
         await page.goto(href.replace(/^\/E-B-M-DIGITAL\//, ''))
         await audit(page, href.split('/').pop() ?? href, findings)

@@ -51,6 +51,18 @@ export type CardTextDraft = {
 
 export type KitDraftRequest = { topic: string; ageMin: number; ageMax: number; cardCount: number }
 
+/** An interactive page (ADR 0023): what it shows and lets the child do. */
+export type PageDraftRequest = {
+  prompt: string
+  /** The card's title; becomes the page's <title>. */
+  title: string
+  ageMin: number
+  ageMax: number
+}
+
+/** A whole HTML document that passed `checkPageHtml` (on the server and again here). */
+export type PageDraft = { title: string; html: string }
+
 export type RunOptions = { signal?: AbortSignal; onProgress?: (progress: AiProgress) => void }
 
 /** Provider-independent AI port (ADR 0018). Mock = fake provider; the Edge Function wraps Gemini. */
@@ -66,4 +78,6 @@ export type AiService = {
     request: KitDraftRequest,
     options?: RunOptions,
   ): Promise<Omit<KitDocument, 'id' | 'slug' | 'qrPrefix'>>
+  /** A self-contained three.js page for an interactive-page card. */
+  draftPage(request: PageDraftRequest, options?: RunOptions): Promise<PageDraft>
 }

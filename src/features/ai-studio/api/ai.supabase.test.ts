@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from 'msw'
 
-import { kitDocumentSchema, type Step } from '@/entities/kit'
+import { kitDocumentSchema, MAX_PAGE_HTML, samplePageHtml, type Step } from '@/entities/kit'
 import { isAppError } from '@/shared/api/errors'
 import { server } from '@/test/mocks/server'
 import {
@@ -15,7 +15,14 @@ import {
 
 import { createSupabaseAiService } from './ai.supabase'
 import { KIT_BLOCK_ROTATION } from './compose'
-import { fakeCardText, fakeIconSvg, fakeSceneSvg, maliciousSvg } from './fake-provider'
+import {
+  fakeCardText,
+  fakeIconSvg,
+  fakePage,
+  fakeSceneSvg,
+  maliciousPageHtml,
+  maliciousSvg,
+} from './fake-provider'
 import type { AiProgress, SceneSuggestion } from './port'
 
 const ai = createSupabaseAiService()
@@ -243,6 +250,47 @@ describe('Supabase AI service: texts', () => {
     expect(
       await failure(ai.draftKit({ topic: 'Işık', ageMin: 7, ageMax: 11, cardCount: 4 })),
     ).toBeInstanceOf(Error)
+  })
+})
+
+describe('Supabase AI service: interactive pages', () => {
+  const request = { prompt: 'Dünya ve Ay’ın dönüşü', title: 'Dünya ve Ay', ageMin: 7, ageMax: 11 }
+  const REJECTED =
+    'Üretilen sayfa güvenlik kontrolünden geçemedi ve reddedildi. Farklı bir istem deneyin.'
+
+  it('drafts a page through ai-generate, checks it and reports progress up to done', async () => {
+    const page = fakePage(request.title, request.prompt)
+    const bodies = edgeFunction('ai-generate', () => page)
+    const progress = stagesOf()
+
+    expect(await ai.draftPage(request, progress)).toEqual({
+      title: 'Dünya ve Ay',
+      html: samplePageHtml('Dünya ve Ay'),
+    })
+    expect(bodies).toEqual([{ action: 'page', ...request }])
+    expect(progress.stages).toEqual(['queued', 'drawing', 'checking', 'done'])
+  })
+
+  it('refuses a page that fails the page check, whatever the function answered', async () => {
+    edgeFunction('ai-generate', () => ({ title: 'x', html: maliciousPageHtml('x') }))
+
+    const error = await failure(ai.draftPage(request))
+    expect(isAppError(error, 'validation') && error.message).toBe(REJECTED)
+  })
+
+  it('refuses an answer that is not a page draft', async () => {
+    edgeFunction('ai-generate', () => ({ title: 'x', html: 'x'.repeat(MAX_PAGE_HTML + 1) }))
+    expect(await failure(ai.draftPage(request))).toBeInstanceOf(Error)
+
+    edgeFunction('ai-generate', () => ({ title: 'x' }))
+    expect(await failure(ai.draftPage(request))).toBeInstanceOf(Error)
+  })
+
+  it('passes the function’s own rejection on', async () => {
+    edgeFunctionError('ai-generate', 422, 'KS422', REJECTED)
+
+    const error = await failure(ai.draftPage(request))
+    expect(isAppError(error, 'validation') && error.message).toBe(REJECTED)
   })
 })
 

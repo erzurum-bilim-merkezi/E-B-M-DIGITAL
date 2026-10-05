@@ -1,7 +1,8 @@
 name: Keep the Supabase project awake
 
 # The Free plan pauses a project after 7 idle days: a harmless ping every 3 days. Uses only the
-# public values of the site (repository variables), no secret.
+# public values of the site (repository variables), no secret. Also fails — so GitHub emails the
+# owner — when a way in the app needs was turned off in the project's Auth settings.
 on:
   schedule:
     - cron: '17 6 */3 * *'
@@ -24,3 +25,11 @@ jobs:
           answer="$(curl -fsS -X POST "$URL/rest/v1/rpc/ping" -H "apikey: $KEY" -H 'Content-Type: application/json' -d '{}')"
           echo "$answer"
           [ "$answer" = '"pong"' ]
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
+      - name: Kâşif devices and staff can still sign in (runbook §1)
+        env:
+          URL: ${{ vars.VITE_SUPABASE_URL }}
+          KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: node scripts/check-live-auth.mjs

@@ -60,6 +60,12 @@ jobs:
             echo "::error::The live database is on $live, this commit needs $expected. Run the db-migrate workflow first."
             exit 1
           fi
+      - name: The live project lets Kâşif devices and staff in (runbook §1)
+        if: vars.VITE_BACKEND == 'supabase'
+        env:
+          URL: ${{ vars.VITE_SUPABASE_URL }}
+          KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: node scripts/check-live-auth.mjs
       - name: Build
         run: npm run build
         env:

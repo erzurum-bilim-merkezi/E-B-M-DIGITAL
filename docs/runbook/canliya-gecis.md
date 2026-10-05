@@ -18,6 +18,10 @@ workflow'dur. Canlı veritabanına elle SQL çalıştırılmaz (ADR 0016).
 **Authentication → Sign In / Providers**
 
 - **Allow anonymous sign-ins: AÇIK.** Çocuk cihazları anonim oturum açar.
+  - Yeni bir Supabase projesinde bu ayar **kapalı** gelir. Kapalıyken çocuklar QR'dan sonra
+    "Giriş şu an kapalı. Lütfen bir görevliye haber verin." görür ve katılamaz.
+  - Deploy bu ayarı denetler, kapalıysa durur. Keep-alive de 3 günde bir denetler, kapalıysa
+    hata verir (`scripts/check-live-auth.mjs`).
 - **Allow new users to sign up: AÇIK.** Anonim giriş buna bağlıdır.
 - **Email provider: AÇIK kalmalı.** Personel e-posta + parola ile girer; kapatılırsa Studio'ya
   kimse giremez.
@@ -177,6 +181,8 @@ Bu adım `admin-users` ve `ai-generate` fonksiyonlarını yayınlar.
 **Actions → Deploy → Run workflow**.
 
 - Deploy, canlı şema sürümünü kontrol eder: migration uygulanmamışsa durur.
+- Deploy, 1. adımdaki giriş ayarlarını da kontrol eder: anonim giriş, yeni kayıt ya da Email
+  sağlayıcısı kapalıysa durur.
 - `VITE_COMING_SOON` açıkken ziyaretçiler "yakında" sayfasını görür. Studio ise çalışır:
   `https://erzurum-bilim-merkezi.github.io/E-B-M-DIGITAL/studio/giris`
 
